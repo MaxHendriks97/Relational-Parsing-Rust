@@ -1,42 +1,167 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::VecDeque;
+use std::rc::Rc;
 use std::fmt;
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone, Copy, PartialOrd, Ord)]
+type State = u32;
+type Terminal = char;
+type Nonterminal = char;
+type Word = Vec<Symbol>;
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone, Copy)]
 enum Symbol {
     Terminal(Terminal),
     Nonterminal(Nonterminal),
-    AtomicLanguage(char, Terminal, Operator),
-    Empty,
+    Epsilon,
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone, Copy, PartialOrd, Ord)]
-enum Operator {
-    ONE,
-    STAR,
-    PLUS,
-    OPT,
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Symbol::Terminal(t) => write!(f, "{}", t),
+            Symbol::Nonterminal(nt) => write!(f, "{}", nt),
+            Symbol::Epsilon => write!(f, "e"),
+        }
+    }
 }
 
-type Terminal = char;
-type Nonterminal = char;
-type AtomicLanguage<'a> = (char, Terminal, Operator, &'a Language);
-type Word = Vec<Symbol>;
-type Language = HashSet<Word>;
+#[derive(Eq, PartialEq, Hash, Debug, Clone, Copy)]
+enum RegexSymbol {
+    Terminal(Terminal),
+    Nonterminal(Nonterminal),
+    AtomicLanguage(Nonterminal, Terminal),
+    Epsilon,
+}
 
 #[derive(Debug)]
-struct Grammar{
+struct Regex {
+    regex: HashMap<(Nonterminal, Terminal), RegexNode>,
+}
+
+impl fmt::Display for Regex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for ((nonterminal, terminal), node) in &self.regex {
+            write!(f, "[{}]({}): {}\n", nonterminal, terminal, node)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+enum RegexNode {
+    Word(WordNode),
+    Node(NodeNode),
+}
+
+impl fmt::Display for RegexNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RegexNode::Word(node) => write!(f, "{}", node),
+            RegexNode::Node(node) => write!(f, "{}", node),
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+struct NodeNode {
+    nodes: Vec<RegexNode>,
+}
+
+impl fmt::Display for NodeNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        for node in &self.nodes {
+            write!(f, "{}", node)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+struct WordNode {
+    words: Vec<Word>,
+    kleene_star: bool,
+}
+
+impl fmt::Display for WordNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        let mut words_iter = self.words.iter().peekable();
+        while words_iter.peek().is_some() {
+            for symbol in words_iter.next().unwrap() {
+                write!(f, "{}", symbol)?;
+            }
+            if words_iter.peek().is_some() {
+                write!(f, " + ")?;
+            }
+        }
+        if self.kleene_star {
+            write!(f, ")*")
+        } else {
+            write!(f, ")")
+        }
+    }
+}
+
+struct FiniteStateAutomaton {
+    states: Vec<State>,
+    accepting_states: Vec<State>,
+    start: State,
+    transitions: HashMap<State, Vec<(Symbol, State)>>,
+    atomic_to_state: HashMap<(Symbol, Terminal), State>,
+}
+
+struct Grammar {
     terminals: HashSet<Terminal>,
     nonterminals: HashSet<Nonterminal>,
-    start: Nonterminal,
-    rules: HashMap<Nonterminal, Vec<Word>>,
     symbols: HashSet<Symbol>,
-    atomics: HashMap<(Symbol, Terminal), (Operator, Language)>,
+    start: Nonterminal,
+    rules: HashMap<Nonterminal, HashSet<Word>>,
+    finite_state_automaton: FiniteStateAutomaton,
+}
+
+enum StateErrors {
+    StartNotInStates(State),
+    AccNotInStates(State),
+    SrcNotInStates(State),
+    DestNotInStates(State),
+    AtomicStateNotInStates(State),
+}
+
+impl FiniteStateAutomaton {
+    pub fn new(states: Vec<State>, accepting_states: Vec<State>, start: State, transitions: HashMap<State, Vec<(Symbol, State)>>, atomic_to_state: HashMap<(Symbol, Terminal), State>) -> Result<FiniteStateAutomaton, StateErrors> {
+        if !states.contains(&start) {
+            return Err(StateErrors::StartNotInStates(start));
+        }
+        for acc_state in &accepting_states {
+            if !states.contains(acc_state) {
+                return Err(StateErrors::AccNotInStates(*acc_state));
+            }
+        }
+        for src_state in transitions.keys() {
+            if !states.contains(src_state) {
+                return Err(StateErrors::SrcNotInStates(*src_state));
+            }
+        }
+        for transition_list in transitions.values() {
+            for (symb, dest_state) in transition_list {
+                if !states.contains(dest_state) {
+                    return Err(StateErrors::DestNotInStates(*dest_state));
+                }
+            }
+        }
+        for atomic_state in atomic_to_state.values() {
+            if !states.contains(atomic_state) {
+                return Err(StateErrors::AtomicStateNotInStates(*atomic_state));
+            }
+        }
+        Ok(FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state})
+    }
 }
 
 impl Grammar {
-    pub fn new(terminals: HashSet<Terminal>, nonterminals: HashSet<Nonterminal>, start: Nonterminal, rules: HashMap<Nonterminal, Vec<Word>>) -> Grammar {
+    pub fn new(terminals: HashSet<Terminal>, nonterminals: HashSet<Nonterminal>, start: Nonterminal, rules: HashMap<Nonterminal, HashSet<Word>>) -> Grammar {
         let mut symbols: HashSet<Symbol> = HashSet::new();
         for s in &nonterminals {
             symbols.insert(Symbol::Nonterminal(*s));
@@ -44,224 +169,316 @@ impl Grammar {
         for t in &terminals {
             symbols.insert(Symbol::Terminal(*t));
         }
-        let atomics = Grammar::to_atomics(start, &rules, &symbols, &terminals);
-        return Grammar{terminals, nonterminals, start, rules, symbols, atomics};
+        let finite_state_automaton = Grammar::build_atomic_languages(&terminals, &nonterminals, &symbols, Symbol::Nonterminal(start), &rules);
+        Grammar{terminals, nonterminals, symbols, start, rules, finite_state_automaton}
     }
 
-    fn to_atomics(start: Nonterminal, rules: &HashMap<Nonterminal, Vec<Word>>, symbols: &HashSet<Symbol>, terminals: &HashSet<Terminal>) -> HashMap<(Symbol, Terminal), (Operator, Language)> {
-        let mut new_rules: HashMap<char, Vec<Vec<Symbol>>> = HashMap::new();
-        let mut res: HashMap<(Symbol, Terminal), (Operator, Language)> = HashMap::new();
-        for (nt, words) in rules {
-            for word in words {
-                // Now check if word contains nullable nonterminal, if so, add a nulled rule
-                let mut nullable_positions: Vec<usize> = Vec::new();
-                for (pos, symbol) in word.iter().enumerate() {
-                    match symbol {
-                        Symbol::Nonterminal(nt) => {
-                            if Grammar::nullable_nonterminal(rules, &nt) {
-                                nullable_positions.push(pos);
-                            }
-                        },
-                        _ => {},
+    fn build_atomic_languages(terminals: &HashSet<Terminal>, nonterminals: &HashSet<Nonterminal>, symbols: &HashSet<Symbol>, start_nt: Symbol, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
+        let start: State = 0;
+        let epsilon: State = 1;
+        let mut states: Vec<State> = vec![start, epsilon]; // All states in the atomic language, contains at least start state Sigma_epsilon (state 0) and state epsilon (state 1)
+        let mut accepting_states: Vec<State> = vec![epsilon]; // All states containing symbol epsilon, state 1 is epsilon itself
+        let mut transitions: HashMap<State, Vec<(Symbol, State)>> = HashMap::new();
+
+        // Add transition from Sigma_epsilon to epsilon by start symbol
+        transitions.insert(start, vec![(start_nt, epsilon)]);
+
+        let mut curr_new_state: State = 2;
+        let mut atomic_to_state: HashMap<(Symbol, Terminal), State> = HashMap::new();
+
+        // add terminal derivations to atomic_to_state
+        for terminal in terminals {
+            atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), epsilon);
+        }
+
+        let mut rule_to_state: HashMap<(Vec<Symbol>, Terminal), State> = HashMap::new();
+        let mut nonterm_has_rule_starting_with_term: HashSet<(Nonterminal, Terminal)> = HashSet::new();
+        let mut rules_starting_with_own_nonterm: HashMap<Nonterminal, Vec<Vec<Symbol>>> = HashMap::new();
+        let mut todo: HashSet<Vec<Symbol>> = HashSet::new();
+
+        //complete basic graph and construct rules_starting_with_own_nonterm list Maybe add todo list?
+        for nt in nonterminals {
+            if let Some(rule_list) = rules.get(nt) {
+                let mut single_terminals_only: bool = true;
+                for rule in rule_list {
+                    if rule[0] == Symbol::Nonterminal(*nt) {
+                        rules_starting_with_own_nonterm.entry(*nt).or_default().push(rule.clone());
+                        single_terminals_only = false;
+                    } else if let Symbol::Terminal(t) = rule[0] {
+                        nonterm_has_rule_starting_with_term.insert((*nt, t));
+                        if rule.len() > 1 {
+                            single_terminals_only = false;
+                        }
+                    } else {
+                        single_terminals_only = false;
                     }
                 }
-
-                let nullable_combinations: Vec<Vec<usize>> = Grammar::powerset(&nullable_positions);
-                for comb in nullable_combinations {
-                    let mut rev = comb.clone();
-                    rev.sort();
-                    rev.reverse();
-                    let mut new_word = word.clone();
-                    for index in rev {
-                        new_word.remove(index);
-                    }
-                    if new_word.len() > 0 {
-                        new_rules.entry(*nt).or_insert_with(Vec::new).push(new_word);
+                if single_terminals_only {
+                    for rule in rule_list {
+                        if let Symbol::Terminal(t) = rule[0] {
+                            atomic_to_state.insert((Symbol::Nonterminal(*nt), t), epsilon);
+                        }
                     }
                 }
             }
         }
-        res.insert((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal(start)]])));
+        
+
         let mut changed: bool = true;
         while changed {
             changed = false;
-            for symbol in symbols {
-                for terminal in terminals {
-                    if let Some(lang) = Grammar::derive(&new_rules, *symbol, *terminal, &res) {
-                        if res.insert((*symbol, *terminal), lang) == None {
-                            changed = true;
+
+            for source in nonterminals {
+                if let Some(rule_list) = rules.get(source) {
+                    for rule in rule_list {
+
+                        if rule.len() == 0 {
+                            if let Symbol::Nonterminal(nt) = rule[0] {
+                                unimplemented!();
+                            }
                         }
+
                     }
                 }
             }
         }
 
-        return res
+        //for symbol in Symbols {
+        //    for terminal in terminals {
+        //        match symbol {
+        //            Symbol::Terminal(t) => {
+        //                if t == terminal {
+        //                    atomic_to_state.insert((*symbol, *terminal), epsilon);
+        //                }
+        //            },
+        //            Symbol::Nonterminal(nt) => {
+        //                // make some datastructure to save applicable rules
+        //                if let Some(rule_list) = rules.get(nt) {
+        //                    let mut words_starting_with_term: HashSet<Word> = HashSet::new();
+        //                    let mut words_starting_with_nonterm: HashSet<Word> = HashSet::new();
+        //                    for word in rule_list {
+        //                        match word[0] {
+        //                            Symbol::Terminal(t) => {
+        //                                if t == *terminal {
+        //                                    words_starting_with_term.insert(word.clone());
+        //                                }
+        //                            }
+        //                            Symbol::Nonterminal(nt2) => {
+        //                                if *nt == nt2 {
+        //                                    words_starting_with_nonterm.insert(word.clone());
+        //                                } else {
+        //                                    // nt2 is not nt, check if nt2 has a rule starting with term
+        //                                }
+        //                            }
+        //                            _ => ()
+        //                        }
+        //                    }
+        //                }
+        //            },
+        //            _ => (),
+        //        }
+        //    }
+        //}
+        FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state}
     }
 
-    fn derive(rules: &HashMap<Nonterminal, Vec<Word>>, symbol: Symbol, terminal: Terminal, curr_atomics: &HashMap<(Symbol, Terminal), (Operator, Language)>) -> Option<(Operator, Language)> {
-        match symbol {
-            Symbol::Nonterminal(s) => {
-                let mut res: (Operator, Language) = (Operator::ONE, HashSet::new());
-                let mut rule_started_with_own_nonterminal: bool = false;
-                let mut rule_started_with_terminal: bool = false;
-                for word in rules.get(&s)? {
-                    //let mut to_insert: Language = HashSet::new();
-                    match word[0] {
-                        Symbol::Terminal(s) => {
-                            if s == terminal {
-                                rule_started_with_terminal = true;
-                                if word.len() == 1 {
-                                    match res.0 {
-                                        Operator::ONE => {res.0 = Operator::OPT},
-                                        Operator::PLUS => {res.0 = Operator::STAR},
-                                        _ => {},
-                                    }
-                                }
-                                if word.len() > 1 {
-                                    //to_insert.insert(word[1..].to_vec());
-                                    res.1.insert(word[1..].to_vec());
-                                }
-                            }
-                        },
-                        Symbol::Nonterminal(_) => {
-                            //First symbol is nonterminal, check if any rule with that nonterminal contains the specified terminal
-                            if word[0] == symbol {
-                                match res.0 {
-                                    Operator::ONE => {res.0 = Operator::PLUS},
-                                    Operator::OPT => {res.0 = Operator::STAR},
-                                    _ => {},
-                                }
-                                rule_started_with_own_nonterminal = true;
-                                for word2 in Grammar::find_rule_with_terminal(&rules, s, terminal, &mut vec![]) {
-                                    if word[0] == symbol {
-                                        res.1.insert(word[1..].to_vec());
-                                    } else {
-                                        res.1.insert([&word2[1..], &word[1..]].concat());
-                                    }
-                                    rule_started_with_terminal = true;
-                                }
-                            } else {
-                                if let Some(atomic) = curr_atomics.get(&(word[0], terminal)) {
-                                    if atomic.1.is_empty() {
-                                        rule_started_with_terminal = true;
-                                        if word.len() > 1 {
-                                            res.1.insert(word[1..].to_vec());
-                                        }
-                                    } else {
-                                        for word2 in &atomic.1 {
-                                            //if word[0] == symbol && word2[0] == Symbol::Terminal(terminal) {
-                                            //    //match res.0 {
-                                            //    //    Operator::ONE => res.0 = Operator::PLUS,
-                                            //    //    Operator::OPT => res.0 = Operator::STAR,
-                                            //    //    _ => {},
-                                            //    //}
-                                            //    //rule_started_with_own_nonterminal = true;
-                                            //    rule_started_with_terminal = true;
-                                            //    res.1.insert(word[1..].to_vec());
-                                            //} else
+}
 
-                                            res.1.insert([&word2[..], &word[1..]].concat());
-                                            rule_started_with_terminal = true;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                                //for word2 in rules.get(&s)? {
-                                //    if word2[0] != word[0] {
-                                //        if let Symbol::Nonterminal(ns) = word2[0] {
-                                //            //Grammar::find_rule_with_terminal(&rules, ns, )
-                                //        }
-                                //    }
-                                //}
-                                //res.1.insert(word[1..].to_vec());
-                            
-                        }
-                        _ => {},
-                    }
-                    //res.1.extend(to_insert.clone());
-                    //for word in to_insert {
-                    
-                }
-                if !rule_started_with_terminal {
-                    None
-                } else {
-                    if rule_started_with_own_nonterminal {
-                        let old_res = res;
-                        let mut res = (old_res.0, HashSet::new());
-                        for mut word in old_res.1 {
-                            word.push(Symbol::AtomicLanguage(s, terminal, Operator::STAR));
-                            res.1.insert(word);
-                        }
-                        Some(res)
-                    } else {
-                        Some(res)
-                    }
-                }
-            },
-            Symbol::Terminal(s) => {
-                if s == terminal {
-                    Some((Operator::ONE, HashSet::new()))
-                } else {
-                    None
-                }
-            },
-            _ => None,
+impl Regex {
+    fn new(terminals: &HashSet<Terminal>, rules: &HashMap<Nonterminal, HashSet<Word>>) -> Regex {
+        let mut atomic_regex_rules: HashMap<(Nonterminal, Terminal), (HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>)> = HashMap::new();
+        let mut queue: VecDeque<(Nonterminal, Terminal)> = VecDeque::new();
+
+        for (nonterminal, rule_list) in rules {
+            for terminal in terminals {
+                //println!("Nonterminal: {}, terminal: {}", nonterminal, terminal);
+                let regex_rules = Regex::calculate_regex_rules(nonterminal, terminal, rules, rule_list);
+                atomic_regex_rules.insert((*nonterminal, *terminal), regex_rules);
+                queue.push_back((*nonterminal, *terminal));
+            }
         }
+
+        Regex {regex: Regex::build_regex_map(queue, atomic_regex_rules)}
     }
 
-    fn find_rule_with_terminal(rules: &HashMap<Nonterminal, Vec<Word>>, nonterminal: Nonterminal, terminal: Terminal, checked: &mut Vec<Nonterminal>) -> Language {
-        let mut res: Language = HashSet::new();
+    fn calculate_regex_rules(nonterminal: &Nonterminal, terminal: &Terminal, rules: &HashMap<Nonterminal, HashSet<Word>>, rule_list: &HashSet<Vec<Symbol>>) -> (HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>) {
+        let mut direct: HashSet<Vec<RegexSymbol>> = HashSet::new();
+        let mut recursive: HashSet<Vec<RegexSymbol>> = HashSet::new();
+        let mut different_atomic: HashSet<Vec<RegexSymbol>> = HashSet::new();
+        let mut nullable_atomic: bool = false;
 
-        let mut found: bool = false;
-
-        if let Some(rule_list) = rules.get(&nonterminal) {
-            for word in rule_list {
-                match word[0] {
-                    Symbol::Terminal(s) => {
-                        if s == terminal {
-                            res.insert(word.clone());
+        for rule in rule_list {
+            //println!("Rule: {:?}", rule);
+            if rule[0] == Symbol::Epsilon {
+                nullable_atomic = true;
+            }
+            if let Some(regex_rule) = Regex::rule_to_regex_rule(rule, *terminal) {
+                //println!("Regex rule: {:?}", regex_rule);
+                match regex_rule[0] {
+                    RegexSymbol::AtomicLanguage(nt, _) => {
+                        if *nonterminal == nt {
+                            recursive.insert(regex_rule);
+                        } else {
+                            different_atomic.insert(regex_rule);
                         }
                     },
-                    Symbol::Nonterminal(s) => {
-                        if s != nonterminal && !checked.contains(&s) {
-                            // We've found another nonterminal, check if this nonterminal has any words starting with terminal
-                            checked.push(s);
-                            let partial_res: Language = Grammar::find_rule_with_terminal(rules, s, terminal, checked);
-                            for word2 in partial_res {
-                                found = true;
-                                res.insert([&word2[..], &word[1..]].concat());
+                    _ => {
+                        direct.insert(regex_rule);
+                    },
+                }
+            }
+        }
+        let mut new_rules = Regex::null_rules(rules, &mut direct, nullable_atomic);
+        new_rules.extend(Regex::null_rules(rules, &mut recursive, nullable_atomic));
+        new_rules.extend(Regex::null_rules(rules, &mut different_atomic, nullable_atomic));
+
+        for rule in new_rules {
+            match rule[0] {
+                RegexSymbol::AtomicLanguage(nt, _) => {
+                    if *nonterminal == nt {
+                        recursive.insert(rule);
+                    } else {
+                        different_atomic.insert(rule);
+                    }
+                },
+                RegexSymbol::Epsilon => {direct.insert(rule);},
+                RegexSymbol::Terminal(t) => {
+                    if t == *terminal && nullable_atomic {
+                        if rule.len() > 1 {
+                            direct.insert(rule[1..].to_vec());
+                        } else {
+                            direct.insert(vec![RegexSymbol::Epsilon]);
+                        }
+                    }
+                },
+                _ => {},
+            }
+        }
+        (direct, recursive, different_atomic)
+    }
+
+    fn build_regex_map(mut queue: VecDeque<(Nonterminal, Terminal)>, atomic_regex_rules: HashMap<(Nonterminal, Terminal), (HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>)>) -> HashMap<(Nonterminal, Terminal), RegexNode> {
+        let mut atomic_regex_rules_working_copy: HashMap<(Nonterminal, Terminal), (HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>, HashSet<Vec<RegexSymbol>>)> = atomic_regex_rules.clone();
+        let mut res: HashMap<(Nonterminal, Terminal), RegexNode> = HashMap::new();
+
+        while queue.len() > 0 {
+            if let Some((nonterminal, terminal)) = queue.pop_front() {
+                //println!("Current (nonterminal, terminal): {:?}", (nonterminal, terminal));
+                if let Some((direct, recursive, different_atomic)) = atomic_regex_rules_working_copy.get_mut(&(nonterminal, terminal)) {
+                    //println!("Current different: {:?}", different_atomic);
+                    //let mut different_recursives: HashSet<Vec<RegexSymbol>> = HashSet::new();
+                    for different_rule in different_atomic.clone() {
+                        if let RegexSymbol::AtomicLanguage(nt, t) = different_rule[0] {
+                            if let Some((ntdirect, _, ntdifferent)) = atomic_regex_rules.get(&(nt, t)) {
+                                for ntdirect_rule in ntdirect.clone() {
+                                    direct.insert([&ntdirect_rule[..], &different_rule[1..]].concat());
+                                }
+                                for ntdifferent_rule in ntdifferent.clone() {
+                                    if let RegexSymbol::AtomicLanguage(nt2, _) = ntdifferent_rule[0] {
+                                        if nt2 == nonterminal {
+                                            recursive.insert([&ntdifferent_rule[..], &different_rule[1..]].concat());
+                                        } else {
+                                            different_atomic.insert([&ntdifferent_rule[..], &different_rule[1..]].concat());
+                                        }
+                                    }
+                                }
+                                different_atomic.remove(&different_rule);
                             }
                         }
+                    }
+                    
+                    //println!("Current direct: {:?}", direct);
+                    //println!("Current recursive: {:?}", recursive);
+                    //println!("Current different: {:?}", different_atomic);
+                    if different_atomic.len() == 0 && direct.len() > 0 {
+                        res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &HashSet::new(), &recursive));
+                    } else {
+                        if different_atomic.len() > 0 { //&& different_atomic.clone() == different_recursives {
+                            let mut all_in_res: bool = true;
+                            let mut regex_nodes: HashSet<RegexNode> = HashSet::new();
+                            for different_rule in different_atomic.iter() {
+                                if let RegexSymbol::AtomicLanguage(nt, t) = different_rule[0] {
+                                    if let Some(regex) = res.get(&(nt, t)) {
+                                        regex_nodes.insert(regex.clone());
+                                    } else if queue.contains(&(nt, t)) {
+                                        all_in_res = false;
+                                        queue.push_back((nonterminal, terminal));
+                                    } else {
+                                        all_in_res = false;
+                                    }
+                                }
+                                //else {
+                                //    all_in_res = false;
+                                //}
+                            }
+                            if all_in_res {
+                                res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &regex_nodes, &recursive));
+                                continue;
+                            }
+                        }
+                        //second_pass_queue.push_back((nonterminal, terminal));
+                    }
+                    //println!("End different: {:?}", different);
+                }
+            }
+        }
+        res
+    }
+
+    fn null_rules(rules: &HashMap<Nonterminal, HashSet<Word>>, rule_list: &HashSet<Vec<RegexSymbol>>, nullable_atomic: bool) -> HashSet<Vec<RegexSymbol>> {
+        //println!("Rule_list: {:?}", rule_list);
+        let mut new_rules: HashSet<Vec<RegexSymbol>> = HashSet::new();
+        for rule in rule_list {
+            //println!("Rule: {:?}", rule);
+            let mut nullable_positions: Vec<usize> = Vec::new();
+            for (pos, symbol) in rule.iter().enumerate() {
+                //println!("Symbol: {:?}", symbol);
+                match symbol {
+                    RegexSymbol::Nonterminal(nt) => {
+                        //println!("Nullable_nonterminal: {}", Regex::nullable_nonterminal(rules, &nt));
+                        if Regex::nullable_nonterminal(rules, &nt) {
+                            nullable_positions.push(pos);
+                        }
                     },
+                    RegexSymbol::AtomicLanguage(nt, _) => {
+                        if nullable_atomic && Regex::nullable_nonterminal(rules, &nt) {
+                            nullable_positions.push(pos);
+                        }
+                    }
                     _ => {},
                 }
             }
-            if found {
-                for word in rule_list {
-                    if word[0] == Symbol::Nonterminal(nonterminal) {
-                        res.insert(word.clone());
-                    }
+            //println!("Nullable_positions: {:?}", nullable_positions);
+
+            let nullable_combinations: Vec<Vec<usize>> = Regex::powerset(&nullable_positions);
+            for comb in nullable_combinations {
+                let mut rev = comb.clone();
+                rev.sort();
+                rev.reverse();
+                let mut new_rule = rule.clone();
+                for index in rev {
+                    new_rule.remove(index);
+                }
+                //println!("New rule: {:?}", new_rule);
+                if new_rule.len() > 0 {
+                    new_rules.insert(new_rule);
                 }
             }
         }
-
-        return res
+        new_rules
     }
 
     fn powerset<T>(s: &[T]) -> Vec<Vec<T>> where T: Clone {
         (0..2usize.pow(s.len() as u32)).map(|i| {
             s.iter().enumerate().filter(|&(t, _)| (i >> t) % 2 == 1)
-                .map(|(_, element)| element.clone())
-                .collect()
+                .map(|(_, element)| element.clone()).collect()
         }).collect()
     }
 
-    fn nullable_nonterminal(rules: &HashMap<Nonterminal, Vec<Word>>, nonterminal: &Nonterminal) -> bool {
-        if let Some(rule) = rules.get(nonterminal) {
-            for word in rule {
-                if *word == vec![Symbol::Empty] {
+    fn nullable_nonterminal(rules: &HashMap<Nonterminal, HashSet<Word>>, nonterminal: &Nonterminal) -> bool {
+        if let Some(rule_list) = rules.get(nonterminal) {
+            for rule in rule_list {
+                if *rule == vec![Symbol::Epsilon] {
                     return true;
                 }
             }
@@ -269,246 +486,120 @@ impl Grammar {
         false
     }
 
-    pub fn get_atomic_with_symb_term(&self, symbol: Symbol, terminal: Terminal) -> (char, Terminal, Option<&(Operator, HashSet<Vec<Symbol>>)>) {
-        match symbol {
-            Symbol::Terminal(t) => (t, terminal, self.atomics.get(&(symbol, terminal))),
-            Symbol::Nonterminal(nt) => (nt, terminal, self.atomics.get(&(symbol, terminal))),
-            _ => (' ', terminal, None)
-        }
-    }
-
-    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<&(Operator, HashSet<Word>)> {
-        self.atomics.get(&(symbol, terminal))
-    }
-
-    pub fn get_start(&self) -> Symbol {
-        Symbol::Nonterminal(self.start)
-    }
-
-    pub fn get_symbols(&self) -> &HashSet<Symbol> {
-        &self.symbols
-    }
-
-}
-
-fn prepend(al: &AtomicLanguage, l: &Language) -> Language {
-    let mut res: Language = HashSet::new();
-
-    if al.3.len() > 0 {
-        for lang in l {
-            match al.2 {
-                Operator::ONE => {
-                    res.insert([[Symbol::AtomicLanguage(al.0, al.1, Operator::ONE)].to_vec(), lang.clone()].concat());
-                    //for atomic in al.3 {
-                    //    if *atomic == vec![Symbol::Empty] {
-                    //        res.insert(lang.clone());
-                    //    } else {
-                    //        res.insert([atomic.clone(), lang.clone()].concat());
-                    //    }
-                    //}
-                },
-                Operator::OPT => {
-                    res.insert([[Symbol::AtomicLanguage(al.0, al.1, Operator::OPT)].to_vec(), lang.clone()].concat());
-                    //for atomic in al.3 {
-                    //    if *atomic != vec![Symbol::Empty] {
-                    //        res.insert([atomic.clone(), lang.clone()].concat());
-                    //    }
-                    //    res.insert(lang.clone());
-                    //}
-                },
-                Operator::PLUS => {
-                    for atomic in al.3 {
-                        if *atomic == vec![Symbol::Empty] {
-                            res.insert(lang.clone());
-                        } else {
-                            res.insert([atomic.clone(), [Symbol::AtomicLanguage(al.0, al.1, Operator::STAR)].to_vec(), lang.clone()].concat());
-                        }
-                    }
-                },
-                Operator::STAR => {
-                    for atomic in al.3 {
-                        if *atomic == vec![Symbol::Empty] {
-                            res.insert(lang.clone());
-                        } else {
-                            res.insert([[Symbol::AtomicLanguage(al.0, al.1, Operator::STAR)].to_vec(), lang.clone()].concat());
-                        }
-                    }
-                },
-            }
-            //for atomic in al.3 {
-            //    if *atomic == vec![Symbol::Empty] {
-            //        res.insert(lang.clone());
-            //    } else {
-            //        res.insert([atomic.clone(), lang.clone()].concat());
-            //    }
-            //}
-        }
-    } else {
-        res = l.clone();
-    }
-    res
-}
-
-fn word_derivative(w: &Word, s: Symbol) -> Option<Word> {
-    if w.starts_with(&[s]) {
-        Some(w.clone()[1..].to_vec())
-    } else {
-        None
-    }
-}
-
-fn derivative(l: &Language, s: Symbol, g: &Grammar) -> Language {
-    let mut res: Language = HashSet::new();
-    for word in l {
-        match word[0] {
-            Symbol::AtomicLanguage(c, terminal, operator) => {
-                let opt_al: Option<&(Operator, Language)>;
-                if g.terminals.contains(&c) {
-                    opt_al = g.get_atomic(Symbol::Terminal(c), terminal);
-                } else {
-                    opt_al = g.get_atomic(Symbol::Nonterminal(c), terminal);
+    fn build_regex_node(direct: &HashSet<Vec<RegexSymbol>>, different_recursive: &HashSet<RegexNode>, recursive: &HashSet<Vec<RegexSymbol>>) -> RegexNode {
+        let mut res_nodes: Vec<RegexNode> = Vec::new();
+        if direct.len() > 0 {
+            let mut direct_word_vec: Vec<Word> = Vec::new();
+            for direct_rule in direct {
+                if let Some(word) = Regex::regex_word_to_word(&direct_rule) {
+                    direct_word_vec.push(word);
                 }
-                if let Some((_, language)) = opt_al {
-                    match operator {
-                        Operator::ONE => {
-                            for atomic_word in language {
-                                if let Some(w) = word_derivative(&atomic_word, s) {
-                                    res.insert([&w[..], &word[1..]].concat());
-                                }
-                            }
-                        },
-                        Operator::STAR => {
-                            for atomic_word in language {
-                                if let Some(w) = word_derivative(&atomic_word, s) {
-                                    //res.insert([&w[..], &[Symbol::AtomicLanguage(c, terminal, Operator::STAR)], &word[1..]].concat());
-                                    res.insert([&w[..], &word[1..]].concat());
-                                }
-                                if word.len() > 1 {
-                                    if let Symbol::Terminal(_) = s {
-                                        match word[1] {
-                                            Symbol::AtomicLanguage(..) => {
-                                                res.extend(derivative(&HashSet::from([word[1..].to_vec()]), s, g));
-                                            },
-                                            _ => {
-                                                if let Some(w) = word_derivative(&word[1..].to_vec(), s) {
-                                                    res.insert(w);
-                                                }
-                                            },
-                                        }
-                                    }
-                                }
-                                
-                            }
-                        },
-                        Operator::PLUS => {
-                            for atomic_word in language {
-                                if let Some(w) = word_derivative(&atomic_word, s) {
-                                    res.insert([&w[..], &word[1..]].concat());
-                                }
-                            }
-                        },
-                        Operator::OPT => {
-                            for atomic_word in language {
-                                if let Some(w) = word_derivative(&atomic_word, s) {
-                                    res.insert([&w[..], &word[1..]].concat());
-                                }
-                                if word.len() > 1 {
-                                    match word[1] {
-                                        Symbol::AtomicLanguage(..) => {
-                                            res.extend(derivative(&HashSet::from([word[1..].to_vec()]), s, g));
-                                        },
-                                        _ => {
-                                            if let Some(w) = word_derivative(&word[1..].to_vec(), s) {
-                                                res.insert(w);
-                                            }
-                                        },
-                                    }
-                                }
-                            }
-                        },
+            }
+            res_nodes.push(RegexNode::Word(WordNode{words: direct_word_vec, kleene_star: false}));
+        }
+        if different_recursive.len() > 0 {
+            if different_recursive.len() == 1 {
+                res_nodes.push(different_recursive.clone().drain().next().unwrap());
+            } else {
+                let mut different_recursive_node_vec: Vec<RegexNode> = Vec::new();
+                for different_recursive_node in different_recursive {
+                    different_recursive_node_vec.push(different_recursive_node.clone());
+                }
+                res_nodes.push(RegexNode::Node(NodeNode{nodes: different_recursive_node_vec}));
+            }
+        }
+        if recursive.len() > 0 {
+            let mut recursive_word_vec: Vec<Word> = Vec::new();
+            for recursive_rule in recursive {
+                if let Some(word) = Regex::regex_word_to_word(&recursive_rule[1..].to_vec()) {
+                    if word.len() > 0 {
+                        recursive_word_vec.push(word);
                     }
+                }
+            }
+            res_nodes.push(RegexNode::Word(WordNode{words: recursive_word_vec, kleene_star: true}));
+        }
+        if res_nodes.len() == 1 {
+            res_nodes.pop().unwrap()
+        } else {
+            RegexNode::Node(NodeNode{nodes: res_nodes})
+        }
+    }
+
+    fn rule_to_regex_rule(rule: &Word, terminal: Terminal) -> Option<Vec<RegexSymbol>> {
+        match rule[0] {
+            Symbol::Nonterminal(nt) => {
+                let mut res: Vec<RegexSymbol> = Vec::new();
+                res.push(RegexSymbol::AtomicLanguage(nt, terminal));
+                for symbol in &rule[1..] {
+                    res.push(Regex::symbol_to_regex_symbol(symbol));
+                }
+                Some(res)
+            },
+            Symbol::Terminal(t) => {
+                if t == terminal {
+                    if rule.len() > 1 {
+                        let mut res: Vec<RegexSymbol> = Vec::new();
+                        for symbol in &rule[1..] {
+                            res.push(Regex::symbol_to_regex_symbol(symbol));
+                        }
+                        Some(res)
+                    } else {
+                        Some(vec![RegexSymbol::Epsilon])
+                    }
+                } else {
+                    None
                 }
             },
-            Symbol::Empty => {},
-            _ => {if let Some(w) = word_derivative(&word, s) {
-                res.insert(w);
-            }},
+            _ => {None},
         }
     }
 
-    res
-}
-
-fn epsilon(l: &Language) -> bool {
-    for word in l {
-        let mut i: usize = 0;
-        while let Symbol::AtomicLanguage(..) = word[i] {
-            i += 1;
-        }
-        if word[i] == Symbol::Empty {
-            return true
+    fn symbol_to_regex_symbol(symbol: &Symbol) -> RegexSymbol {
+        match symbol {
+            Symbol::Nonterminal(nt) => RegexSymbol::Nonterminal(*nt),
+            Symbol::Terminal(t) => RegexSymbol::Terminal(*t),
+            Symbol::Epsilon => RegexSymbol::Epsilon
         }
     }
-    false
-}
 
-fn g_generates_string(g: &Grammar, terminals: String) -> bool {
-    let mut lang: Language = prepend(&(' ', ' ', Operator::ONE, &HashSet::from([vec![g.get_start()]])), &HashSet::from([vec![Symbol::Empty]])); // characters here are iffy, think of a nicer solution
-    println!("\nStart lang: {:?}", lang);
-    for terminal in terminals.chars() {
-        let mut new_lang: Language = HashSet::new();
-        println!("terminal: {}", terminal);
-        for symbol in g.get_symbols() { //Check if I can reduce this to only terminals
-            if let Some((operator, language)) = g.get_atomic(*symbol, terminal) {
-                if let Symbol::Nonterminal(c) | Symbol::Terminal(c) = symbol {
-                    new_lang.extend(prepend(&(*c, terminal, *operator, language), &derivative(&lang, *symbol, g)));
-                }
+    fn regex_word_to_word(regex_word: &Vec<RegexSymbol>) -> Option<Word> {
+        let mut res: Word = Vec::new();
+        for regex_symbol in regex_word {
+            if let Some(symbol) = Regex::regex_symbol_to_symbol(regex_symbol) {
+                res.push(symbol);
+            } else {
+                return None
             }
         }
-        lang = new_lang;
-        println!("End round lang");
-        print_lang(&lang);
+        Some(res)
     }
-    epsilon(&lang)
-}
 
-fn print_lang(lang: &Language) {
-    println!("{{");
-    for word in lang {
-        println!("{:?}", word);
+    fn regex_symbol_to_symbol(regex_symbol: &RegexSymbol) -> Option<Symbol> {
+        match regex_symbol {
+            RegexSymbol::Nonterminal(nt) => Some(Symbol::Nonterminal(*nt)),
+            RegexSymbol::Terminal(t) => Some(Symbol::Terminal(*t)),
+            RegexSymbol::Epsilon => Some(Symbol::Epsilon),
+            RegexSymbol::AtomicLanguage(_, _) => None
+        }
     }
-    println!("}}\n");
+
 }
 
 #[cfg(test)]
-mod tests {
+mod tests{
     use super::*;
-
-    #[test]
-    fn test_prepend() {
-        let al: Language = HashSet::from([vec![Symbol::Terminal('a')], vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]]);
-        let l: Language = HashSet::from([vec![Symbol::Terminal('c'), Symbol::Terminal('a')], vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]]);
-
-        assert_eq!(prepend(&(' ', ' ', Operator::ONE, &al), &l), HashSet::from([vec![Symbol::Terminal('a'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')], vec![Symbol::Terminal('a'), Symbol::Terminal('c'), Symbol::Terminal('a')], vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')], vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::Terminal('c'), Symbol::Terminal('a')]]));
-    }
-
-    #[test]
-    fn test_derivative() {
-        let lang: Language = HashSet::from([vec![Symbol::Terminal('a')], vec![Symbol::Terminal('b')], vec![Symbol::Terminal('a'), Symbol::Terminal('b')], vec![Symbol::Terminal('a'), Symbol::Nonterminal('S')]]);
-        let g: Grammar = setup_empty_grammar();
-        assert_eq!(derivative(&lang, Symbol::Terminal('a'), &g), HashSet::from([vec![], vec![Symbol::Terminal('b')], vec![Symbol::Nonterminal('S')]]));
-    }
 
     fn basic_relational_parsing_example_grammar() -> Grammar {
         let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
         let start: Nonterminal = 'S';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('S', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
             vec![Symbol::Terminal('a')],
             vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
             vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
 
@@ -516,13 +607,13 @@ mod tests {
         let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
         let start: Nonterminal = 'S';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('S', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
             vec![Symbol::Terminal('a')],
             vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
             vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
-            vec![Symbol::Empty]
-        ]);
+            vec![Symbol::Epsilon]
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
 
@@ -530,12 +621,12 @@ mod tests {
         let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
         let start: Nonterminal = 'S';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('S', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
             vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('b')],
             vec![Symbol::Nonterminal('S'), Symbol::Terminal('a'), Symbol::Terminal('b')],
             vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a')],
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
 
@@ -543,17 +634,17 @@ mod tests {
         let terminals: HashSet<Terminal> = HashSet::from(['a', '+', '-']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['S', 'E', 'F', 'Q']);
         let start: Nonterminal = 'S';
-        let mut rules:  HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('S', vec![vec![Symbol::Nonterminal('E')]]);
-        rules.insert('E', vec![
+        let mut rules:  HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([vec![Symbol::Nonterminal('E')]]));
+        rules.insert('E', HashSet::from([
             vec![Symbol::Nonterminal('E'), Symbol::Nonterminal('Q'), Symbol::Nonterminal('F')],
             vec![Symbol::Nonterminal('F')]
-        ]);
-        rules.insert('F', vec![vec![Symbol::Terminal('a')]]);
-        rules.insert('Q', vec![
+        ]));
+        rules.insert('F', HashSet::from([vec![Symbol::Terminal('a')]]));
+        rules.insert('Q', HashSet::from([
             vec![Symbol::Terminal('+')],
             vec![Symbol::Terminal('-')],
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
 
@@ -561,11 +652,11 @@ mod tests {
         let terminals: HashSet<Terminal> = HashSet::from(['a']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
         let start: Nonterminal = 'S';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('S', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
             vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')],
             vec![Symbol::Terminal('a')]
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
 
@@ -573,269 +664,127 @@ mod tests {
         let terminals: HashSet<Terminal> = HashSet::from(['a']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['A']);
         let start: Nonterminal = 'A';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('A', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('A', HashSet::from([
             vec![Symbol::Nonterminal('A'), Symbol::Terminal('a')],
-            vec![Symbol::Empty]
-        ]);
+            vec![Symbol::Epsilon]
+        ]));
         Grammar::new(terminals, nonterminals, start, rules)
     }
     
     fn indirect_left_recursive_grammar() -> Grammar {
-        let terminals: HashSet<Terminal> = HashSet::from(['a']);
+        let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B']);
         let start: Nonterminal = 'A';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('A', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('A', HashSet::from([
             vec![Symbol::Nonterminal('B'), Symbol::Terminal('a')],
             vec![Symbol::Terminal('a')],
-        ]);
-        rules.insert('B', vec![
+        ]));
+        rules.insert('B', HashSet::from([
             vec![Symbol::Nonterminal('A'), Symbol::Terminal('b')],
             vec![Symbol::Terminal('b')],
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules) 
     }
+
+    fn even_more_indirect_left_recursive_grammar() -> Grammar {
+        let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
+        let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B', 'C']);
+        let start: Nonterminal = 'A';
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('A', HashSet::from([
+            vec![Symbol::Nonterminal('B'), Symbol::Terminal('a')],
+            vec![Symbol::Terminal('a')],
+        ]));
+        rules.insert('B', HashSet::from([
+            vec![Symbol::Nonterminal('C'), Symbol::Terminal('a')],
+            vec![Symbol::Terminal('b')],
+        ]));
+        rules.insert('C', HashSet::from([
+            vec![Symbol::Nonterminal('A'), Symbol::Terminal('a')],
+            vec![Symbol::Terminal('c')],
+        ]));
+        Grammar::new(terminals, nonterminals, start, rules)
+    }
+
     fn direct_right_recursive_grammar() -> Grammar {
         let terminals: HashSet<Terminal> = HashSet::from(['a']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['A']);
         let start: Nonterminal = 'A';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('A', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('A', HashSet::from([
             vec![Symbol::Terminal('a'), Symbol::Nonterminal('A')],
             vec![Symbol::Terminal('a')],
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules) 
     }
 
     fn indirect_right_recursive_grammar() -> Grammar {
-        let terminals: HashSet<Terminal> = HashSet::from(['a']);
+        let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
         let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B']);
         let start: Nonterminal = 'A';
-        let mut rules: HashMap<Nonterminal, Vec<Word>> = HashMap::new();
-        rules.insert('A', vec![
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('A', HashSet::from([
             vec![Symbol::Terminal('a'), Symbol::Nonterminal('B')],
             vec![Symbol::Terminal('a')],
-        ]);
-        rules.insert('B', vec![
+        ]));
+        rules.insert('B', HashSet::from([
             vec![Symbol::Terminal('b'), Symbol::Nonterminal('A')],
             vec![Symbol::Terminal('b')],
-        ]);
+        ]));
         Grammar::new(terminals, nonterminals, start, rules) 
     }
 
     #[test]
-    fn test_g_generates_string() {
-        let grammar: Grammar = e_rule_relational_parsing_example_grammar();
-        println!("{:?}", grammar.atomics);
-
-        //assert!(g_generates_string(&grammar, "abcbcbcbaaaaaac".to_string()));
-        //assert!(g_generates_string(&grammar, "aababacc".to_string()));
-        assert!(g_generates_string(&grammar, "a".to_string()));
-        //assert!(g_generates_string(&grammar, "aa".to_string()));
-        //assert!(g_generates_string(&grammar, "aaa".to_string()));
-        //assert!(g_generates_string(&grammar, "abac".to_string()));
-        //assert!(g_generates_string(&grammar, "abaac".to_string()));
-        //assert!(g_generates_string(&grammar, "ababacc".to_string()));
-        //assert!(g_generates_string(&grammar, "abaabacca".to_string()));
-        //assert!(g_generates_string(&grammar, "abaca".to_string()));
-        //assert!(!g_generates_string(&grammar, "aababac".to_string()));
+    fn rule_to_regex_rule_test() {
+        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), Some(vec![RegexSymbol::Nonterminal('S'), RegexSymbol::Terminal('b')]));
+        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Nonterminal('S'), Symbol::Terminal('a'), Symbol::Terminal('b')], 'a'), Some(vec![RegexSymbol::AtomicLanguage('S', 'a'), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('b')]));
+        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a')], 'a'), Some(vec![RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')]));
+        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a')], 'a'), Some(vec![RegexSymbol::Epsilon]));
+        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), None);
     }
 
     #[test]
-    fn three_rule_grammar_test() {
-        let mut grammar: Grammar = three_rule_grammar();
-        grammar.atomics = HashMap::from([
-            ((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('S')]]))),
-            ((Symbol::Terminal('a'), 'a'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('b'), 'b'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Nonterminal('S'), 'a'), (Operator::PLUS, HashSet::from([
-                vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Terminal('a'), Symbol::Terminal('b'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('b'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Nonterminal('S'), Symbol::Terminal('b')],
-                vec![Symbol::Terminal('a'), Symbol::Terminal('a')]
-            ])))
-        ]);
-        println!("{:?}", grammar.atomics);
-
-        assert!(g_generates_string(&grammar, "aaaab".to_string()));
-        assert!(g_generates_string(&grammar, "aaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaabab".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaabbab".to_string()));
-        assert!(g_generates_string(&grammar, "aaaababab".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaabb".to_string()));
-        assert!(!g_generates_string(&grammar, "aaaaab".to_string()));
-        assert!(!g_generates_string(&grammar, "aaaabb".to_string()));
-        assert!(!g_generates_string(&grammar, "aaaaa".to_string()));
+    fn regex_word_to_word_test() {
+        assert_eq!(Regex::regex_word_to_word(&vec![RegexSymbol::Terminal('a'), RegexSymbol::Nonterminal('b')]), Some(vec![Symbol::Terminal('a'), Symbol::Nonterminal('b')]));
+        assert_eq!(Regex::regex_word_to_word(&vec![RegexSymbol::Terminal('a'), RegexSymbol::Nonterminal('b'), RegexSymbol::Epsilon]), Some(vec![Symbol::Terminal('a'), Symbol::Nonterminal('b'), Symbol::Epsilon]));
+        assert_eq!(Regex::regex_word_to_word(&vec![RegexSymbol::AtomicLanguage('a', 'b')]), None);
+        assert_eq!(Regex::regex_word_to_word(&vec![RegexSymbol::Terminal('a'), RegexSymbol::AtomicLanguage('a', 'b')]), None);
+        assert_eq!(Regex::regex_word_to_word(&vec![RegexSymbol::Nonterminal('a'), RegexSymbol::AtomicLanguage('a', 'b')]), None);
     }
 
     #[test]
-    fn difficult_bottom_up_test() {
-        let grammar: Grammar = difficult_bottom_up_grammar();
-        println!("{:?}", grammar.atomics);
+    fn rules_to_regex_rules_test() {
+        let grammar = basic_relational_parsing_example_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
 
-        assert!(g_generates_string(&grammar, "a-a+a".to_string()));
-        assert!(g_generates_string(&grammar, "a-a-a-a".to_string()));
-        assert!(g_generates_string(&grammar, "a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a-a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a".to_string()));
-        assert!(g_generates_string(&grammar, "a-a".to_string()));
-        assert!(g_generates_string(&grammar, "a-a-a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a+a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a+a+a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a-a+a".to_string()));
-        assert!(g_generates_string(&grammar, "a+a+a-a".to_string()));
-        assert!(g_generates_string(&grammar, "a-a+a+a".to_string()));
-        assert!(!g_generates_string(&grammar, "a-aa+a".to_string()));
-        assert!(!g_generates_string(&grammar, "a-a+a+".to_string()));
+        let grammar = e_rule_relational_parsing_example_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = three_rule_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = difficult_bottom_up_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = odd_number_of_a_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = direct_left_recursive_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = indirect_left_recursive_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = even_more_indirect_left_recursive_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = direct_right_recursive_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+
+        let grammar = indirect_right_recursive_grammar();
+        println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
     }
 
-    #[test]
-    fn odd_number_of_a_test() {
-        let grammar: Grammar = odd_number_of_a_grammar();
-        println!("{:?}", grammar.atomics);
-
-        assert!(g_generates_string(&grammar, "a".to_string()));
-        assert!(g_generates_string(&grammar, "aaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaaaa".to_string()));
-        assert!(!g_generates_string(&grammar, "aa".to_string()));
-        assert!(!g_generates_string(&grammar, "aaaa".to_string()));
-        assert!(!g_generates_string(&grammar, "aaaaaa".to_string()));
-    }
-
-    #[test]
-    fn direct_left_recursion_test() {
-        let grammar: Grammar = direct_left_recursive_grammar();
-        println!("{:?}", grammar.atomics);
-
-        assert!(g_generates_string(&grammar, "a".to_string()));
-        assert!(g_generates_string(&grammar, "aa".to_string()));
-        assert!(g_generates_string(&grammar, "aaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaaaa".to_string()));
-        assert!(g_generates_string(&grammar, "aaaaaaaa".to_string()));
-    }
-
-    fn setup_empty_grammar() -> Grammar {
-        Grammar::new(HashSet::new(), HashSet::new(), 'S', HashMap::new())
-    }
-
-    #[test]
-    fn print_grammar() {
-        let grammar: Grammar = basic_relational_parsing_example_grammar();
-
-        println!("{:?}", grammar);
-    }
-
-    #[test]
-    fn test_word_slice() {
-        let word: Word = vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')];
-        let test: Word = word.clone()[1..].to_vec();
-
-        assert_eq!(test, vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]);
-    }
-
-    #[test]
-    fn test_atomics() {
-        let grammar: Grammar = basic_relational_parsing_example_grammar();
-        assert_eq!(grammar.atomics, HashMap::from([
-            ((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('S')]]))),
-            ((Symbol::Terminal('a'), 'a'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('b'), 'b'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('c'), 'c'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Nonterminal('S'), 'a'), (Operator::STAR, HashSet::from([
-                vec![Symbol::Terminal('a'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-            ]))),
-        ]));
-
-        let grammar: Grammar = e_rule_relational_parsing_example_grammar();
-        assert_eq!(grammar.atomics, HashMap::from([
-            ((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('S')]]))),
-            ((Symbol::Terminal('a'), 'a'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('b'), 'b'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('c'), 'c'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Nonterminal('S'), 'a'), (Operator::STAR, HashSet::from([
-                vec![Symbol::Terminal('a'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Terminal('b'), Symbol::Terminal('c'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-            ]))),
-        ]));
-
-        let grammar: Grammar = three_rule_grammar();
-        assert_eq!(grammar.atomics, HashMap::from([
-            ((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('S')]]))),
-            ((Symbol::Terminal('a'), 'a'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('b'), 'b'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Nonterminal('S'), 'a'), (Operator::PLUS, HashSet::from([
-                vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)],
-                vec![Symbol::Terminal('a'), Symbol::Terminal('b'), Symbol::AtomicLanguage('S', 'a', Operator::STAR)]
-            ])))
-        ]));
-
-        let grammar: Grammar = difficult_bottom_up_grammar();
-        assert_eq!(grammar.atomics, HashMap::from([
-            ((Symbol::Nonterminal(' '), ' '), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('S')]]))),
-            ((Symbol::Terminal('a'), 'a'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('+'), '+'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Terminal('-'), '-'), (Operator::ONE, HashSet::new())),
-            ((Symbol::Nonterminal('Q'), '+'), (Operator::OPT, HashSet::new())),
-            ((Symbol::Nonterminal('Q'), '-'), (Operator::OPT, HashSet::new())),
-            ((Symbol::Nonterminal('F'), 'a'), (Operator::OPT, HashSet::new())),
-            ((Symbol::Nonterminal('S'), 'a'), (Operator::ONE, HashSet::from([vec![Symbol::Nonterminal('Q'), Symbol::Nonterminal('F'), Symbol::AtomicLanguage('E', 'a', Operator::STAR)]]))),
-            ((Symbol::Nonterminal('E'), 'a'), (Operator::PLUS, HashSet::from([vec![Symbol::Nonterminal('Q'), Symbol::Nonterminal('F'), Symbol::AtomicLanguage('E', 'a', Operator::STAR)]])))
-        ]));
-    }
-
-    #[test]
-    fn test_grammar_derive() {
-        let grammar: Grammar = basic_relational_parsing_example_grammar();
-        assert_eq!(Grammar::derive(&grammar.rules, Symbol::Terminal('a'), 'a', &HashMap::new()), Some((Operator::ONE, HashSet::new())));
-
-        assert_eq!(Grammar::derive(&grammar.rules, Symbol::Terminal('a'), 'b', &HashMap::new()), None);
-
-        assert_eq!(Grammar::derive(&grammar.rules, Symbol::Nonterminal('S'), 'a', &HashMap::new()),
-            Some((Operator::ONE, HashSet::from([
-                vec![Symbol::Empty],
-                vec![Symbol::Nonterminal('S')],
-                vec![Symbol::Terminal('a')],
-                vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
-            ])))
-        );
-    }
-
-    #[test]
-    fn test_grammar_derive_nulling() {
-        let grammar: Grammar = e_rule_relational_parsing_example_grammar();
-        assert_eq!(Grammar::derive(&grammar.rules, Symbol::Nonterminal('S'), 'a', &HashMap::new()),
-            Some((Operator::ONE, HashSet::from([
-                vec![Symbol::Empty],
-                vec![Symbol::Nonterminal('S')],
-                vec![Symbol::Terminal('a')],
-                vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
-                vec![Symbol::Terminal('b'), Symbol::Terminal('c')]
-            ])))
-        );
-    }
-
-    #[test]
-    fn test_grammar_find_rule() {
-        let grammar: Grammar = basic_relational_parsing_example_grammar();
-        
-        assert_eq!(Grammar::find_rule_with_terminal(&grammar.rules, 'S', 'a', &mut Vec::new()), HashSet::from([vec![Symbol::Terminal('a')]]));
-        assert_eq!(Grammar::find_rule_with_terminal(&grammar.rules, 'S', 'b', &mut Vec::new()), HashSet::new());
-        assert_eq!(Grammar::find_rule_with_terminal(&grammar.rules, 'S', 'c', &mut Vec::new()), HashSet::new());
-    }
-
-    #[test]
-    fn test_break_grammar_find_rule() {
-        let mut grammar: Grammar = basic_relational_parsing_example_grammar();
-        grammar.rules.get_mut(&'S').expect("").push(vec![Symbol::Nonterminal('T')]);
-        grammar.rules.insert('T', vec![vec![Symbol::Nonterminal('S')]]);
-        Grammar::find_rule_with_terminal(&grammar.rules, 'S', 'a', &mut Vec::new());
-    }
 }
