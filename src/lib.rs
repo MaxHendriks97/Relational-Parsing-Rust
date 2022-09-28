@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::rc::Rc;
+use std::fs::File;
+use std::hash::Hash;
+use std::io::Write;
 use std::fmt;
 
 type State = u32;
@@ -48,7 +50,7 @@ impl fmt::Display for Regex {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 enum RegexNode {
     Word(WordNode),
     Node(NodeNode),
@@ -63,7 +65,7 @@ impl fmt::Display for RegexNode {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 struct NodeNode {
     nodes: Vec<RegexNode>,
 }
@@ -78,9 +80,9 @@ impl fmt::Display for NodeNode {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 struct WordNode {
-    words: Vec<Word>,
+    words: HashSet<Word>,
     kleene_star: bool,
 }
 
@@ -105,11 +107,38 @@ impl fmt::Display for WordNode {
 }
 
 struct FiniteStateAutomaton {
-    states: Vec<State>,
-    accepting_states: Vec<State>,
+    states: HashSet<State>,
+    accepting_states: HashSet<State>,
     start: State,
-    transitions: HashMap<State, Vec<(Symbol, State)>>,
+    transitions: HashMap<State, HashSet<(Symbol, State)>>,
     atomic_to_state: HashMap<(Symbol, Terminal), State>,
+}
+
+impl fmt::Display for FiniteStateAutomaton {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "States: ");
+        for state in &self.states {
+            write!(f, "{} ", state);
+        }
+        write!(f, "\nAccepting states: ");
+        for state in &self.accepting_states {
+            write!(f, "{} ", state);
+        }
+        write!(f, "\nStart state: {}\n", &self.start);
+        write!(f, "Transitions:\n");
+        for (state, transition_list) in &self.transitions {
+            write!(f, "{}: ", state);
+            for transition in transition_list {
+                write!(f, "|to {} via {}| ", transition.1, transition.0);
+            }
+            write!(f, "\n");
+        }
+        write!(f, "\nAtomic to state: ");
+        for ((symbol, terminal), state) in &self.atomic_to_state {
+            write!(f, "|[{}]^({}) {}| ", symbol, terminal, state);
+        }
+        Ok(())
+    }
 }
 
 struct Grammar {
@@ -130,7 +159,7 @@ enum StateErrors {
 }
 
 impl FiniteStateAutomaton {
-    pub fn new(states: Vec<State>, accepting_states: Vec<State>, start: State, transitions: HashMap<State, Vec<(Symbol, State)>>, atomic_to_state: HashMap<(Symbol, Terminal), State>) -> Result<FiniteStateAutomaton, StateErrors> {
+    pub fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashSet<(Symbol, State)>>, atomic_to_state: HashMap<(Symbol, Terminal), State>) -> Result<FiniteStateAutomaton, StateErrors> {
         if !states.contains(&start) {
             return Err(StateErrors::StartNotInStates(start));
         }
@@ -158,6 +187,40 @@ impl FiniteStateAutomaton {
         }
         Ok(FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state})
     }
+
+    pub fn to_dot(&self, filename: &str) -> std::io::Result<()> {
+        let mut file = File::create(format!("{}.dot", filename))?;
+        write!(file, "digraph G {{\n")?;
+        write!(file, "{} [ label=\"start\" ]\n", &self.start)?;
+        let mut state_to_labels: HashMap<State, Vec<String>> = HashMap::new();
+        for state in &self.accepting_states {
+            state_to_labels.entry(*state).or_default().push("shape=pentagon".to_string());
+        }
+        for ((symbol, terminal), state) in &self.atomic_to_state {
+            match symbol {
+                Symbol::Nonterminal(nonterm) => state_to_labels.entry(*state).or_default().push(format!("label=\"{}^({})\"", nonterm, terminal)),
+                Symbol::Terminal(term) => state_to_labels.entry(*state).or_default().push(format!("label=\"{}^({})\"", term, terminal)),
+                _ => {},
+            }
+        }
+        for (state, strings) in state_to_labels {
+            write!(file, "{} [ ", state)?;
+            for string in strings {
+                write!(file, "{} ", string)?;
+            }
+            write!(file, "]\n")?;
+        }
+        for (source, transition_list) in &self.transitions {
+            for (symbol, dest) in transition_list {
+                match symbol {
+                    Symbol::Epsilon => write!(file, "{} -> {} [ label=\"e\" ]\n", source, dest)?,
+                    Symbol::Nonterminal(nonterminal) => write!(file, "{} -> {} [ label=\"{}\" ]\n", source, dest, nonterminal)?,
+                    Symbol::Terminal(terminal) => write!(file, "{} -> {} [ label=\"{}\" ]\n", source, dest, terminal)?,
+                }
+            }
+        }
+        write!(file, "}}")
+    }
 }
 
 impl Grammar {
@@ -169,21 +232,21 @@ impl Grammar {
         for t in &terminals {
             symbols.insert(Symbol::Terminal(*t));
         }
-        let finite_state_automaton = Grammar::build_atomic_languages(&terminals, &nonterminals, &symbols, Symbol::Nonterminal(start), &rules);
+        let finite_state_automaton = Grammar::build_fsa(&terminals, &nonterminals, &symbols, Symbol::Nonterminal(start), &rules);
         Grammar{terminals, nonterminals, symbols, start, rules, finite_state_automaton}
     }
 
-    fn build_atomic_languages(terminals: &HashSet<Terminal>, nonterminals: &HashSet<Nonterminal>, symbols: &HashSet<Symbol>, start_nt: Symbol, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
+    fn build_fsa(terminals: &HashSet<Terminal>, nonterminals: &HashSet<Nonterminal>, symbols: &HashSet<Symbol>, start_nt: Symbol, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
         let start: State = 0;
         let epsilon: State = 1;
-        let mut states: Vec<State> = vec![start, epsilon]; // All states in the atomic language, contains at least start state Sigma_epsilon (state 0) and state epsilon (state 1)
-        let mut accepting_states: Vec<State> = vec![epsilon]; // All states containing symbol epsilon, state 1 is epsilon itself
-        let mut transitions: HashMap<State, Vec<(Symbol, State)>> = HashMap::new();
+        let mut states: HashSet<State> = HashSet::from([start, epsilon]); // All states in the atomic language, contains at least start state Sigma_epsilon (state 0) and state epsilon (state 1)
+        let mut accepting_states: HashSet<State> = HashSet::from([epsilon]); // All states containing symbol epsilon, state 1 is epsilon itself
+        let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
 
         // Add transition from Sigma_epsilon to epsilon by start symbol
-        transitions.insert(start, vec![(start_nt, epsilon)]);
+        transitions.insert(start, HashSet::from([(start_nt, epsilon)]));
 
-        let mut curr_new_state: State = 2;
+        let mut curr_state: State = 2;
         let mut atomic_to_state: HashMap<(Symbol, Terminal), State> = HashMap::new();
 
         // add terminal derivations to atomic_to_state
@@ -191,95 +254,88 @@ impl Grammar {
             atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), epsilon);
         }
 
-        let mut rule_to_state: HashMap<(Vec<Symbol>, Terminal), State> = HashMap::new();
-        let mut nonterm_has_rule_starting_with_term: HashSet<(Nonterminal, Terminal)> = HashSet::new();
-        let mut rules_starting_with_own_nonterm: HashMap<Nonterminal, Vec<Vec<Symbol>>> = HashMap::new();
-        let mut todo: HashSet<Vec<Symbol>> = HashSet::new();
+        let atomic_regex: Regex = Regex::new(terminals, rules);
 
-        //complete basic graph and construct rules_starting_with_own_nonterm list Maybe add todo list?
-        for nt in nonterminals {
-            if let Some(rule_list) = rules.get(nt) {
-                let mut single_terminals_only: bool = true;
-                for rule in rule_list {
-                    if rule[0] == Symbol::Nonterminal(*nt) {
-                        rules_starting_with_own_nonterm.entry(*nt).or_default().push(rule.clone());
-                        single_terminals_only = false;
-                    } else if let Symbol::Terminal(t) = rule[0] {
-                        nonterm_has_rule_starting_with_term.insert((*nt, t));
-                        if rule.len() > 1 {
-                            single_terminals_only = false;
-                        }
-                    } else {
-                        single_terminals_only = false;
-                    }
-                }
-                if single_terminals_only {
-                    for rule in rule_list {
-                        if let Symbol::Terminal(t) = rule[0] {
-                            atomic_to_state.insert((Symbol::Nonterminal(*nt), t), epsilon);
-                        }
-                    }
-                }
+        for ((nonterminal, terminal), node) in atomic_regex.regex {
+            if node == RegexNode::Word(WordNode{words: HashSet::from([vec![Symbol::Epsilon]]), kleene_star: false}) {
+                atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), 1);
+                continue;
             }
+            let (new_states, start_state, end_state, highest_state, new_transitions) = Grammar::regex_node_to_states(&node, curr_state, curr_state);
+            states.extend(new_states);
+            atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), start_state);
+            accepting_states.insert(end_state);
+            curr_state = highest_state + 1;
+            transitions.extend(new_transitions);
         }
-        
 
-        let mut changed: bool = true;
-        while changed {
-            changed = false;
+        FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state}
+    }
 
-            for source in nonterminals {
-                if let Some(rule_list) = rules.get(source) {
-                    for rule in rule_list {
+    fn regex_node_to_states(node: &RegexNode, curr_state: State, highest_state: State) -> (HashSet<State>, State, State, State, HashMap<State, HashSet<(Symbol, State)>>) {
+        let start_state: State = curr_state;
+        let mut end_state: State = 0;
+        let mut states: HashSet<State> = HashSet::from([start_state]);
+        let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
 
-                        if rule.len() == 0 {
-                            if let Symbol::Nonterminal(nt) = rule[0] {
-                                unimplemented!();
+        let mut highest_state: State = highest_state;
+        match node {
+            RegexNode::Node(node) => {
+                let mut curr_state: State = curr_state;
+
+                for n in node.nodes.iter() {
+                    let (new_states, _, new_curr_state, new_highest_state, new_transitions) = Grammar::regex_node_to_states(n, curr_state, highest_state);
+                    curr_state = new_curr_state;
+                    states.extend(new_states);
+                    transitions.extend(new_transitions);
+                    highest_state = new_highest_state;
+                    end_state = new_curr_state;
+                }
+            },
+            RegexNode::Word(node) => {
+                //node.words: HashSet<Word>
+                let mut curr_state: State;
+                if node.kleene_star {
+                    end_state = start_state;
+                }
+
+                for word in node.words.iter() {
+                    curr_state = start_state;
+                    let mut peekable_word = word.iter().peekable();
+                    'word: while let Some(symbol) = peekable_word.next() {
+                        if let Symbol::Epsilon = symbol {
+                            continue;
+                        } else if let Some(transition_list) = transitions.get(&curr_state) {
+                            for (transition_symbol, dest) in transition_list {
+                                if transition_symbol == symbol {
+                                    curr_state = *dest;
+                                    continue 'word;
+                                }
                             }
                         }
-
+                        if peekable_word.peek() != None {
+                            highest_state += 1;
+                            transitions.entry(curr_state).or_insert(HashSet::new()).insert((*symbol, highest_state));
+                            states.insert(highest_state);
+                            curr_state = highest_state;
+                        } else {
+                            if end_state == 0 {
+                                highest_state += 1;
+                                end_state = highest_state;
+                                states.insert(end_state);
+                            }
+                            transitions.entry(curr_state).or_insert(HashSet::new()).insert((*symbol, end_state));
+                        }
+                        
                     }
                 }
-            }
+                if end_state == 0 {
+                    end_state = start_state;
+                }
+            },
         }
 
-        //for symbol in Symbols {
-        //    for terminal in terminals {
-        //        match symbol {
-        //            Symbol::Terminal(t) => {
-        //                if t == terminal {
-        //                    atomic_to_state.insert((*symbol, *terminal), epsilon);
-        //                }
-        //            },
-        //            Symbol::Nonterminal(nt) => {
-        //                // make some datastructure to save applicable rules
-        //                if let Some(rule_list) = rules.get(nt) {
-        //                    let mut words_starting_with_term: HashSet<Word> = HashSet::new();
-        //                    let mut words_starting_with_nonterm: HashSet<Word> = HashSet::new();
-        //                    for word in rule_list {
-        //                        match word[0] {
-        //                            Symbol::Terminal(t) => {
-        //                                if t == *terminal {
-        //                                    words_starting_with_term.insert(word.clone());
-        //                                }
-        //                            }
-        //                            Symbol::Nonterminal(nt2) => {
-        //                                if *nt == nt2 {
-        //                                    words_starting_with_nonterm.insert(word.clone());
-        //                                } else {
-        //                                    // nt2 is not nt, check if nt2 has a rule starting with term
-        //                                }
-        //                            }
-        //                            _ => ()
-        //                        }
-        //                    }
-        //                }
-        //            },
-        //            _ => (),
-        //        }
-        //    }
-        //}
-        FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state}
+        (states, start_state, end_state, highest_state, transitions)
     }
 
 }
@@ -369,9 +425,12 @@ impl Regex {
                     //let mut different_recursives: HashSet<Vec<RegexSymbol>> = HashSet::new();
                     for different_rule in different_atomic.clone() {
                         if let RegexSymbol::AtomicLanguage(nt, t) = different_rule[0] {
-                            if let Some((ntdirect, _, ntdifferent)) = atomic_regex_rules.get(&(nt, t)) {
+                            if let Some((ntdirect, ntrecursive, ntdifferent)) = atomic_regex_rules.get(&(nt, t)) {
                                 for ntdirect_rule in ntdirect.clone() {
                                     direct.insert([&ntdirect_rule[..], &different_rule[1..]].concat());
+                                }
+                                for ntrecursive_rule in ntrecursive.clone() {
+                                    recursive.insert([&[RegexSymbol::AtomicLanguage(nonterminal, t)], &ntrecursive_rule[1..], &different_rule[1..]].concat());
                                 }
                                 for ntdifferent_rule in ntdifferent.clone() {
                                     if let RegexSymbol::AtomicLanguage(nt2, _) = ntdifferent_rule[0] {
@@ -391,15 +450,15 @@ impl Regex {
                     //println!("Current recursive: {:?}", recursive);
                     //println!("Current different: {:?}", different_atomic);
                     if different_atomic.len() == 0 && direct.len() > 0 {
-                        res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &HashSet::new(), &recursive));
+                        res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &Vec::new(), &recursive));
                     } else {
                         if different_atomic.len() > 0 { //&& different_atomic.clone() == different_recursives {
                             let mut all_in_res: bool = true;
-                            let mut regex_nodes: HashSet<RegexNode> = HashSet::new();
+                            let mut regex_nodes: Vec<RegexNode> = Vec::new();
                             for different_rule in different_atomic.iter() {
                                 if let RegexSymbol::AtomicLanguage(nt, t) = different_rule[0] {
                                     if let Some(regex) = res.get(&(nt, t)) {
-                                        regex_nodes.insert(regex.clone());
+                                        regex_nodes.push(regex.clone());
                                     } else if queue.contains(&(nt, t)) {
                                         all_in_res = false;
                                         queue.push_back((nonterminal, terminal));
@@ -486,20 +545,20 @@ impl Regex {
         false
     }
 
-    fn build_regex_node(direct: &HashSet<Vec<RegexSymbol>>, different_recursive: &HashSet<RegexNode>, recursive: &HashSet<Vec<RegexSymbol>>) -> RegexNode {
+    fn build_regex_node(direct: &HashSet<Vec<RegexSymbol>>, different_recursive: &Vec<RegexNode>, recursive: &HashSet<Vec<RegexSymbol>>) -> RegexNode {
         let mut res_nodes: Vec<RegexNode> = Vec::new();
         if direct.len() > 0 {
-            let mut direct_word_vec: Vec<Word> = Vec::new();
+            let mut direct_word_set: HashSet<Word> = HashSet::new();
             for direct_rule in direct {
                 if let Some(word) = Regex::regex_word_to_word(&direct_rule) {
-                    direct_word_vec.push(word);
+                    direct_word_set.insert(word);
                 }
             }
-            res_nodes.push(RegexNode::Word(WordNode{words: direct_word_vec, kleene_star: false}));
+            res_nodes.push(RegexNode::Word(WordNode{words: direct_word_set, kleene_star: false}));
         }
         if different_recursive.len() > 0 {
             if different_recursive.len() == 1 {
-                res_nodes.push(different_recursive.clone().drain().next().unwrap());
+                res_nodes.push(different_recursive.clone().pop().unwrap());
             } else {
                 let mut different_recursive_node_vec: Vec<RegexNode> = Vec::new();
                 for different_recursive_node in different_recursive {
@@ -509,15 +568,15 @@ impl Regex {
             }
         }
         if recursive.len() > 0 {
-            let mut recursive_word_vec: Vec<Word> = Vec::new();
+            let mut recursive_word_set: HashSet<Word> = HashSet::new();
             for recursive_rule in recursive {
                 if let Some(word) = Regex::regex_word_to_word(&recursive_rule[1..].to_vec()) {
                     if word.len() > 0 {
-                        recursive_word_vec.push(word);
+                        recursive_word_set.insert(word);
                     }
                 }
             }
-            res_nodes.push(RegexNode::Word(WordNode{words: recursive_word_vec, kleene_star: true}));
+            res_nodes.push(RegexNode::Word(WordNode{words: recursive_word_set, kleene_star: true}));
         }
         if res_nodes.len() == 1 {
             res_nodes.pop().unwrap()
@@ -785,6 +844,32 @@ mod tests{
 
         let grammar = indirect_right_recursive_grammar();
         println!("{}", Regex::new(&grammar.terminals, &grammar.rules));
+    }
+
+    #[test]
+    fn regex_node_to_states_test() {
+        let grammar = e_rule_relational_parsing_example_grammar();
+        let regex = Regex::new(&grammar.terminals, &grammar.rules);
+        println!("{}", regex);
+        println!("{:?}", Grammar::regex_node_to_states(regex.regex.get(&('S', 'b')).unwrap(), 1, 1));
+
+        //let grammar = odd_number_of_a_grammar();
+        //let regex = Regex::new(&grammar.terminals, &grammar.rules);
+        //println!("{}", regex);
+        //println!("{:?}", Grammar::regex_node_to_states(regex.regex.get(&('S', 'a')).unwrap(), 1));
+
+    }
+
+    #[test]
+    fn to_dot() {
+        let grammar = difficult_bottom_up_grammar();
+        grammar.finite_state_automaton.to_dot("difficult_bottom_up").expect("error");
+
+        let grammar = basic_relational_parsing_example_grammar();
+        grammar.finite_state_automaton.to_dot("basic").expect("error");
+
+        let grammar = even_more_indirect_left_recursive_grammar();
+        grammar.finite_state_automaton.to_dot("very_indirect").expect("error");
     }
 
 }
