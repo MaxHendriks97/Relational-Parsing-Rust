@@ -116,26 +116,26 @@ struct FiniteStateAutomaton {
 
 impl fmt::Display for FiniteStateAutomaton {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "States: ");
+        write!(f, "States: ")?;
         for state in &self.states {
-            write!(f, "{} ", state);
+            write!(f, "{} ", state)?;
         }
-        write!(f, "\nAccepting states: ");
+        write!(f, "\nAccepting states: ")?;
         for state in &self.accepting_states {
-            write!(f, "{} ", state);
+            write!(f, "{} ", state)?;
         }
-        write!(f, "\nStart state: {}\n", &self.start);
-        write!(f, "Transitions:\n");
+        write!(f, "\nStart state: {}\n", &self.start)?;
+        write!(f, "Transitions:\n")?;
         for (state, transition_list) in &self.transitions {
-            write!(f, "{}: ", state);
+            write!(f, "{}: ", state)?;
             for transition in transition_list {
-                write!(f, "|to {} via {}| ", transition.1, transition.0);
+                write!(f, "|to {} via {}| ", transition.1, transition.0)?;
             }
-            write!(f, "\n");
+            write!(f, "\n")?;
         }
-        write!(f, "\nAtomic to state: ");
+        write!(f, "\nAtomic to state: ")?;
         for ((symbol, terminal), state) in &self.atomic_to_state {
-            write!(f, "|[{}]^({}) {}| ", symbol, terminal, state);
+            write!(f, "|[{}]^({}) {}| ", symbol, terminal, state)?;
         }
         Ok(())
     }
@@ -191,24 +191,24 @@ impl FiniteStateAutomaton {
     pub fn to_dot(&self, filename: &str) -> std::io::Result<()> {
         let mut file = File::create(format!("{}.dot", filename))?;
         write!(file, "digraph G {{\n")?;
-        write!(file, "{} [ label=\"start\" ]\n", &self.start)?;
-        let mut state_to_labels: HashMap<State, Vec<String>> = HashMap::new();
-        for state in &self.accepting_states {
-            state_to_labels.entry(*state).or_default().push("shape=pentagon".to_string());
+        //write!(file, "{} [ label=\"start\" ]\n", &self.start)?;
+        let mut state_to_shape: HashMap<State, &str> = HashMap::new();
+        for state in &self.states {
+            if self.accepting_states.contains(state) {
+                state_to_shape.insert(*state, "doublecircle");
+            } else {
+                state_to_shape.insert(*state, "circle");
+            }
+        }
+        for state in &self.states {
+            write!(file, "{} [ shape={} ]\n", state, state_to_shape.get(state).unwrap())?;
         }
         for ((symbol, terminal), state) in &self.atomic_to_state {
             match symbol {
-                Symbol::Nonterminal(nonterm) => state_to_labels.entry(*state).or_default().push(format!("label=\"{}^({})\"", nonterm, terminal)),
-                Symbol::Terminal(term) => state_to_labels.entry(*state).or_default().push(format!("label=\"{}^({})\"", term, terminal)),
+                Symbol::Nonterminal(nonterm) => write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}\n", nonterm, terminal, nonterm, terminal, state)?,
+                Symbol::Terminal(term) => write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}\n", term, terminal, term, terminal, state)?,
                 _ => {},
             }
-        }
-        for (state, strings) in state_to_labels {
-            write!(file, "{} [ ", state)?;
-            for string in strings {
-                write!(file, "{} ", string)?;
-            }
-            write!(file, "]\n")?;
         }
         for (source, transition_list) in &self.transitions {
             for (symbol, dest) in transition_list {
