@@ -696,24 +696,6 @@ impl RegexNode {
     }
 }
 
-impl NodeNode {
-    // Returns overlap and left-overs
-    fn end_overlaps_with(&self, other: NodeNode) -> (VecDeque<RegexNode>, Vec<RegexNode>) {
-        let mut self_nodes: Vec<RegexNode> = self.nodes.clone();
-        let mut other_nodes: Vec<RegexNode> = other.nodes.clone();
-        let mut overlap: VecDeque<RegexNode> = VecDeque::new();
-
-        while self_nodes.last() == other_nodes.last() {
-            if let Some(node) = self_nodes.pop() {
-                overlap.push_front(node);
-                other_nodes.pop();
-            }
-        }
-
-        return (overlap, self_nodes);
-    }
-}
-
 #[cfg(test)]
 mod tests{
     use super::*;
