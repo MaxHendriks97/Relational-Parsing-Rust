@@ -5,7 +5,6 @@ use std::io::Write;
 
 use crate::word::*;
 use crate::regex::*;
-use crate::grammar::*;
 
 pub type State = u32;
 
