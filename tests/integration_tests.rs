@@ -68,7 +68,7 @@ fn build_fsa_test() {
         vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
         vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
     ]));
-    println!("{}", FiniteStateAutomaton::build_fsa(&HashSet::from(['a', 'b', 'c']), Symbol::Nonterminal('S'), &rules));
+    println!("{}", FiniteStateAutomaton::build_fsa(&HashSet::from(['a', 'b', 'c']), 'S', &rules));
 }
 
 #[test]
