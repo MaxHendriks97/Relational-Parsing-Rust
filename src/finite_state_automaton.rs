@@ -82,7 +82,7 @@ impl FiniteStateAutomaton {
         Ok(FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state})
     }
 
-    pub fn build_fsa(terminals: &HashSet<Terminal>, start_nt: Symbol, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
+    pub fn build_fsa(terminals: &HashSet<Terminal>, start_nt: Nonterminal, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
         let start: State = 0;
         let epsilon: State = 1;
         let mut states: HashSet<State> = HashSet::from([start, epsilon]); // All states in the atomic language, contains at least start state Sigma_epsilon (state 0) and state epsilon (state 1)
@@ -90,7 +90,11 @@ impl FiniteStateAutomaton {
         let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
 
         // Add transition from Sigma_epsilon to epsilon by start symbol
-        transitions.insert(start, HashSet::from([(start_nt, epsilon)]));
+        transitions.insert(start, HashSet::from([(Symbol::Nonterminal(start_nt), epsilon)]));
+
+        if rules.get(&start_nt).unwrap().contains(&vec![Symbol::Epsilon]) {
+            accepting_states.insert(start);
+        }
 
         let mut highest_state: State = 1;
         let mut atomic_to_state: HashMap<(Symbol, Terminal), State> = HashMap::new();
