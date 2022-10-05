@@ -21,7 +21,7 @@ pub struct FiniteStateAutomaton {
     states: HashSet<State>,
     accepting_states: HashSet<State>,
     start: State,
-    transitions: HashMap<State, HashSet<(Symbol, State)>>,
+    transitions: HashMap<State, HashMap<Symbol, State>>,
     atomic_to_state: HashMap<(Symbol, Terminal), State>,
 }
 
@@ -53,7 +53,7 @@ impl fmt::Display for FiniteStateAutomaton {
 }
 
 impl FiniteStateAutomaton {
-    fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashSet<(Symbol, State)>>, atomic_to_state: HashMap<(Symbol, Terminal), State>) -> Result<FiniteStateAutomaton, StateErrors> {
+    fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashMap<Symbol, State>>, atomic_to_state: HashMap<(Symbol, Terminal), State>) -> Result<FiniteStateAutomaton, StateErrors> {
         if !states.contains(&start) {
             return Err(StateErrors::StartNotInStates(start));
         }
@@ -87,10 +87,10 @@ impl FiniteStateAutomaton {
         let epsilon: State = 1;
         let mut states: HashSet<State> = HashSet::from([start, epsilon]); // All states in the atomic language, contains at least start state Sigma_epsilon (state 0) and state epsilon (state 1)
         let mut accepting_states: HashSet<State> = HashSet::from([epsilon]); // All states containing symbol epsilon, state 1 is epsilon itself
-        let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
+        let mut transitions: HashMap<State, HashMap<Symbol, State>> = HashMap::new();
 
         // Add transition from Sigma_epsilon to epsilon by start symbol
-        transitions.insert(start, HashSet::from([(Symbol::Nonterminal(start_nt), epsilon)]));
+        transitions.insert(start, HashMap::from([(Symbol::Nonterminal(start_nt), epsilon)]));
 
         if rules.get(&start_nt).unwrap().contains(&vec![Symbol::Epsilon]) {
             accepting_states.insert(start);
@@ -112,10 +112,11 @@ impl FiniteStateAutomaton {
                 atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), 1);
                 continue;
             }
-            let (new_states, start_state, end_state, new_highest_state, new_transitions) = FiniteStateAutomaton::atomic_regex_to_states(&node, None, highest_state,  &mut regex_to_state);
+            let (new_states, new_accepting_states, start_state, end_state, new_highest_state, new_transitions) = FiniteStateAutomaton::atomic_regex_to_states(&node, None, highest_state,  &mut regex_to_state);
             states.extend(new_states);
             atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), start_state);
             accepting_states.insert(end_state);
+            accepting_states.extend(new_accepting_states);
             highest_state = new_highest_state;
             transitions.extend(new_transitions);
         }
@@ -123,13 +124,14 @@ impl FiniteStateAutomaton {
         FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state}
     }
 
-    pub fn atomic_regex_to_states(node: &RegexNode, end_state: Option<State>, highest_state: State, regex_to_state: &mut HashMap<VecDeque<RegexNode>, (State, State)>) -> (HashSet<State>, State, State, State, HashMap<State, HashSet<(Symbol, State)>>) {
+    pub fn atomic_regex_to_states(node: &RegexNode, end_state: Option<State>, highest_state: State, regex_to_state: &mut HashMap<VecDeque<RegexNode>, (State, State)>) -> (HashSet<State>, HashSet<State>, State, State, State, HashMap<State, HashMap<Symbol, State>>) {
         match node {
             RegexNode::Node(nodenode) => {
                 //let mut curr_state: State = curr_state;
                 let mut start_state: State = 0;
-                let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
+                let mut transitions: HashMap<State, HashMap<Symbol, State>> = HashMap::new();
                 let mut states: HashSet<State> = HashSet::new();
+                let mut accepting_states: HashSet<State> = HashSet::new();
                 let mut highest_state: State = highest_state;
                 let mut regex_to_state_key: VecDeque<RegexNode> = VecDeque::new();
                 let mut nodenodequeue: VecDeque<RegexNode> = nodenode.nodes.clone().into();
@@ -149,9 +151,10 @@ impl FiniteStateAutomaton {
                             final_end_state = *dest;
                         }
                     } else {
-                        let (new_states, new_start_state, new_end_state, new_highest_state, new_transitions) = FiniteStateAutomaton::atomic_regex_to_states(&n, end_state, highest_state, regex_to_state);
+                        let (new_states, new_accepting_states, new_start_state, new_end_state, new_highest_state, new_transitions) = FiniteStateAutomaton::atomic_regex_to_states(&n, end_state, highest_state, regex_to_state);
                         start_state = new_start_state;
                         states.extend(new_states);
+                        accepting_states.extend(new_accepting_states);
                         end_state = Some(new_start_state);
                         highest_state = new_highest_state;
                         transitions.extend(new_transitions);
@@ -162,14 +165,19 @@ impl FiniteStateAutomaton {
                     }
                 }
                 //println!("{:?}, {}, {}, {}, {:?}", states, start_state, final_end_state, highest_state, transitions);
-                (states, start_state, final_end_state, highest_state, transitions)
+                (states, accepting_states, start_state, final_end_state, highest_state, transitions)
             },
             RegexNode::Word(wordnode) => {
                 if let Some(state) = end_state {
-                    FiniteStateAutomaton::word_node_to_states(wordnode, highest_state + 1, state, highest_state + 1)
+                    if wordnode.kleene_star {
+                        FiniteStateAutomaton::word_node_to_states(wordnode, state, state, highest_state + 1)
+
+                    } else {
+                        FiniteStateAutomaton::word_node_to_states(wordnode, highest_state + 1, state, highest_state + 1)
+                    }
                     //(states, start_state, end_state, highest_state, transitions)
                 } else {
-                    FiniteStateAutomaton::word_node_to_states(wordnode, highest_state + 1, highest_state + 1, highest_state + 1)
+                    FiniteStateAutomaton::word_node_to_states(wordnode, highest_state + 1, 0, highest_state + 1)
                     //(states, start_state, end_state, highest_state, transitions)
                 }
             },
@@ -177,12 +185,13 @@ impl FiniteStateAutomaton {
         //unimplemented!()
     }
 
-    fn word_node_to_states(node: &WordNode, curr_state: State, end_state: State, highest_state: State) -> (HashSet<State>, State, State, State, HashMap<State, HashSet<(Symbol, State)>>) {
+    fn word_node_to_states(node: &WordNode, curr_state: State, end_state: State, highest_state: State) -> (HashSet<State>, HashSet<State>, State, State, State, HashMap<State, HashMap<Symbol, State>>) {
         //println!("{:?}, {}, {}, {}", node, curr_state, end_state, highest_state);
         let start_state: State = curr_state;
         let mut end_state: State = end_state;
         let mut states: HashSet<State> = HashSet::from([start_state]);
-        let mut transitions: HashMap<State, HashSet<(Symbol, State)>> = HashMap::new();
+        let mut accepting_states: HashSet<State> = HashSet::new();
+        let mut transitions: HashMap<State, HashMap<Symbol, State>> = HashMap::new();
 
         let mut highest_state: State = highest_state;
         let mut curr_state: State;
@@ -192,6 +201,10 @@ impl FiniteStateAutomaton {
         }
 
         for word in node.words.iter() {
+            if word == &vec![Symbol::Epsilon] {
+                accepting_states.insert(start_state);
+                continue;
+            }
             curr_state = start_state;
             let mut peekable_word = word.iter().peekable();
             'word: while let Some(symbol) = peekable_word.next() {
@@ -207,7 +220,7 @@ impl FiniteStateAutomaton {
                 }
                 if peekable_word.peek() != None {
                     highest_state += 1;
-                    transitions.entry(curr_state).or_insert(HashSet::new()).insert((*symbol, highest_state));
+                    transitions.entry(curr_state).or_insert(HashMap::new()).insert(*symbol, highest_state);
                     states.insert(highest_state);
                     curr_state = highest_state;
                 } else {
@@ -216,17 +229,14 @@ impl FiniteStateAutomaton {
                         end_state = highest_state;
                         states.insert(end_state);
                     }
-                    transitions.entry(curr_state).or_insert(HashSet::new()).insert((*symbol, end_state));
+                    transitions.entry(curr_state).or_insert(HashMap::new()).insert(*symbol, end_state);
                 }
                 
             }
         }
-        if end_state == 0 {
-            end_state = start_state;
-        }
 
         //println!("{:?}, {}, {}, {}, {:?}", states, start_state, end_state, highest_state, transitions);
-        (states, start_state, end_state, highest_state, transitions)
+        (states, accepting_states, start_state, end_state, highest_state, transitions)
     }
 
     pub fn to_dot(&self, filename: &str) -> std::io::Result<()> {
@@ -262,4 +272,29 @@ impl FiniteStateAutomaton {
         }
         write!(file, "}}")
     }
+
+    pub fn simulate(&self, curr_state: &State, symbol: Symbol) -> Option<(&State, bool)> {
+        self.transitions.get(&curr_state)?
+            .get(&symbol)
+            .map_or(None, |dest| Some((dest, self.is_accepting(dest))))
+    }
+
+    pub fn is_accepting(&self, curr_state: &State) -> bool {
+        self.accepting_states.contains(curr_state)
+    }
+
+    pub fn get_start(&self) -> (State, bool) {
+        (self.start, self.is_accepting(&self.start))
+    }
+
+    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<(&State, bool)> {
+        self.atomic_to_state.get(&(symbol, terminal))
+            .map_or(None, |dest| Some((dest, self.is_accepting(dest))))
+    }
+
+    pub fn has_transition(&self, curr_state: &State) -> bool {
+        self.transitions.get(curr_state)
+            .map_or(false, |trans_list| !trans_list.is_empty())
+    }
+
 }
