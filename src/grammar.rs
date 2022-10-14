@@ -26,5 +26,6 @@ impl Grammar {
         //let finite_state_automaton: FiniteStateAutomaton = FiniteStateAutomaton { states: HashSet::new(), accepting_states: HashSet::new(), start: 0, transitions: HashMap::new(), atomic_to_state: HashMap::new() };
         let finite_state_automaton = FiniteStateAutomaton::build_fsa(&terminals, start, &rules);
         Grammar{terminals, nonterminals, symbols, start, rules, finite_state_automaton}
+        //Grammar{terminals, nonterminals, symbols, start, rules}
     }
 }

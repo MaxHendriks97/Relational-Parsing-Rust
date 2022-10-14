@@ -29,6 +29,21 @@ pub fn e_rule_relational_parsing_example_grammar() -> Grammar {
     Grammar::new(terminals, nonterminals, start, rules)
 }
 
+pub fn extra_e_rule_relational_parsing_example_grammar() -> Grammar {
+    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
+    let start: Nonterminal = 'S';
+    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+    rules.insert('S', HashSet::from([
+        vec![Symbol::Terminal('a')],
+        vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
+        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
+        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::Terminal('c')],
+        vec![Symbol::Epsilon]
+    ]));
+    Grammar::new(terminals, nonterminals, start, rules)
+}
+
 pub fn three_rule_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);

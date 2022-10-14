@@ -113,40 +113,71 @@ pub use finite_state_automaton::*;
 //    parse_result.epsilon()
 //}
 
-type Configuration = Vec<(State, bool)>;
+type Configuration = (Vec<(State, bool)>, Rules);
 type Language = HashSet<Configuration>;
 
-pub fn prepend(atomic_language: (State, bool), language: &Language) -> Language {
+pub fn print_language(language: &Language) {
+    println!("lang:");
+    for (configuration, applied_rules) in language {
+        print!("    [");
+        for (state, accepting) in configuration {
+            print!("({}, {})  ", state, accepting);
+        }
+        for (nonterminal, rule) in applied_rules {
+            print!("({} -> ", nonterminal);
+            for symbol in rule {
+                print!("{}", symbol);
+            }
+            print!(")");
+        }
+        println!("]");
+    }
+}
+
+pub fn prepend(atomic_language: (State, bool), new_rules: &Option<HashSet<Rules>>, language: &Language) -> Language {
     let mut res: Language = HashSet::new();
-    for configuration in language {
-        res.insert([[atomic_language].to_vec(), configuration.clone()].concat());
+    for (curr_conf, applied_rules) in language {
+        if let Some(rules_set) = new_rules {
+            for rules_list in rules_set {
+                res.insert(([[atomic_language].to_vec(), curr_conf.clone()].concat(), [rules_list.clone(), applied_rules.clone()].concat()));
+            }
+        } else {
+            res.insert(([[atomic_language].to_vec(), curr_conf.clone()].concat(), applied_rules.clone()));
+        }
+
     }
     res
 }
 
 pub fn head(configuration: &Configuration) -> &[(State, bool)] {
     let mut end: usize = 0;
-    while let Some((_, accepting)) = configuration.get(end) {
+    while let Some((_, accepting)) = configuration.0.get(end) {
         end += 1;
         if !*accepting {
             break;
         }
     }
-    &configuration[0..end]
+    &configuration.0[0..end]
 }
 
 pub fn derivative(language: &Language, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> Language {
     let mut res: Language = HashSet::new();
-    for configuration in language {
-        let mut curr_configuration: VecDeque<(State, bool)> = configuration.clone().into();
+    for (curr_conf, rules) in language {
+        let mut curr_configuration: VecDeque<(State, bool)> = curr_conf.clone().into();
 
         while let Some((state, accepting)) = curr_configuration.pop_front() {
             let mut new_configuration = curr_configuration.clone();
-            if let Some((dest, accepting)) = finite_state_automaton.simulate(&state, symbol) {
+            if let Some((dest, opt_rules, accepting)) = finite_state_automaton.simulate(&state, symbol) {
                 if finite_state_automaton.has_transition(dest) {
                     new_configuration.push_front((*dest, accepting));
                 }
-                res.insert(new_configuration.into());
+                if let Some(new_rules) = opt_rules {
+                    let mut applied_rules = new_rules.clone();
+                    applied_rules.extend(rules.clone());
+                    res.insert((new_configuration.into(), applied_rules));
+                } else {
+                    res.insert((new_configuration.into(), rules.clone()));
+                }
             }
             if !accepting {
                 break;
@@ -158,7 +189,7 @@ pub fn derivative(language: &Language, symbol: Symbol, finite_state_automaton: &
 }
 
 pub fn epsilon(language: &Language, finite_state_automaton: &FiniteStateAutomaton) -> bool {
-    'lang: for configuration in language {
+    'lang: for (configuration, _) in language {
         for (_, accepting) in configuration {
             if !accepting {
                 continue 'lang;
@@ -174,14 +205,15 @@ pub fn epsilon(language: &Language, finite_state_automaton: &FiniteStateAutomato
 pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool {
     let finite_state_automaton: &FiniteStateAutomaton = &grammar.finite_state_automaton;
     let symbols: &HashSet<Symbol> = &grammar.symbols;
-    let mut lang: Language = HashSet::from([vec![finite_state_automaton.get_start()]]);
+    let mut lang: Language = HashSet::from([(vec![finite_state_automaton.get_start()], Vec::new())]);
     for token in token_string {
-        println!("lang: {:?}", lang);
+        print_language(&lang);
+        //println!("lang: {:?}", lang);
         let mut new_lang: Language = HashSet::new();
         for symbol in symbols {
-            if let Some((atomic, accepting)) = finite_state_automaton.get_atomic(*symbol, token) {
+            if let Some((atomic, opt_rule_set, accepting)) = finite_state_automaton.get_atomic(*symbol, token) {
                 if finite_state_automaton.has_transition(atomic) {
-                    new_lang.extend(prepend((*atomic, accepting), &derivative(&lang, *symbol, &finite_state_automaton)));
+                    new_lang.extend(prepend((*atomic, accepting), opt_rule_set, &derivative(&lang, *symbol, &finite_state_automaton)));
                 } else {
                     new_lang.extend(derivative(&lang, *symbol, &finite_state_automaton));
                 }
@@ -189,7 +221,8 @@ pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool 
         }
         lang = new_lang;
     }
-    println!("lang: {:?}", lang);
+    print_language(&lang);
+    //println!("lang: {:?}", lang);
     epsilon(&lang, finite_state_automaton)
 }
 
