@@ -169,8 +169,12 @@ impl Regex {
                         if let RegexSymbol::AtomicLanguage(nt, t) = different_rule.0[0] {
                             if let Some((ntdirect, ntrecursive, ntdifferent)) = atomic_regex_rules.get(&(nt, t)) {
                                 for ntdirect_rule in ntdirect.clone() {
-                                    direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
-                                    //direct.insert(([&ntdirect_rule.0[..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                    //direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                    if different_rule.0.len() <= 1 {
+                                        direct.insert((ntdirect_rule.0.clone(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                    } else {
+                                        direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                    }
                                 }
                                 for ntrecursive_rule in ntrecursive.clone() {
                                     recursive.insert(([&[RegexSymbol::AtomicLanguage(nonterminal, t)], &ntrecursive_rule.0[1..], &different_rule.0[1..]].concat(), ntrecursive_rule.1.clone()));
