@@ -511,6 +511,17 @@ impl WordNode {
         WordNode {words: new_words, kleene_star: self.kleene_star}
     }
 
+    pub fn get_by_base_rules(&self) -> HashMap<Rules, HashSet<WordNodeWord>> {
+        let mut res: HashMap<Rules, HashSet<WordNodeWord>> = HashMap::new();
+
+        for (word, rules) in &self.words {
+            println!("{:?}", rules);
+            res.entry(rules.clone()).or_default().insert(word.clone());
+        }
+
+        res
+    }
+
     pub fn print_with_rules(&self) {
         print!("(");
         let mut words_iter = self.words.iter().peekable();
