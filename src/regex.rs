@@ -515,7 +515,6 @@ impl WordNode {
         let mut res: HashMap<Rules, HashSet<WordNodeWord>> = HashMap::new();
 
         for (word, rules) in &self.words {
-            println!("{:?}", rules);
             res.entry(rules.clone()).or_default().insert(word.clone());
         }
 

@@ -166,17 +166,19 @@ pub fn derivative(language: &Language, symbol: Symbol, finite_state_automaton: &
         let mut curr_configuration: VecDeque<(State, bool)> = curr_conf.clone().into();
 
         while let Some((state, accepting)) = curr_configuration.pop_front() {
-            let mut new_configuration = curr_configuration.clone();
-            if let Some((dest, opt_rules, accepting)) = finite_state_automaton.simulate(&state, symbol) {
-                if finite_state_automaton.has_transition(dest) {
-                    new_configuration.push_front((*dest, accepting));
-                }
-                if let Some(new_rules) = opt_rules {
-                    let mut applied_rules = new_rules.clone();
-                    applied_rules.extend(rules.clone());
-                    res.insert((new_configuration.into(), applied_rules));
-                } else {
-                    res.insert((new_configuration.into(), rules.clone()));
+            if let Some(destinations) = finite_state_automaton.simulate(&state, symbol) {
+                for (dest, opt_rules, accepting) in destinations {
+                    let mut new_configuration = curr_configuration.clone();
+                    if finite_state_automaton.has_transition(dest) {
+                        new_configuration.push_front((*dest, accepting));
+                    }
+                    if let Some(new_rules) = opt_rules {
+                        let mut applied_rules = new_rules.clone();
+                        applied_rules.extend(rules.clone());
+                        res.insert((new_configuration.into(), applied_rules));
+                    } else {
+                        res.insert((new_configuration.into(), rules.clone()));
+                    }
                 }
             }
             if !accepting {
