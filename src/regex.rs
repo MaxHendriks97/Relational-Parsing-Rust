@@ -79,14 +79,14 @@ impl Regex {
             match no_nulled_rule.0[0] {
                 RegexSymbol::AtomicLanguage(nt, _) => {
                     if *nonterminal == nt {
-                        recursive.insert((rule.0.clone(), [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
+                        recursive.insert((rule.0.clone(), [rule.1.clone(), Regex::collect_starting_null_rules(&rule)].concat()));
                         //if let RegexSymbol::Nulled(null_rule) = &rule.0[0] {
                         //    recursive.insert((rule.0.clone(), [null_rule.clone(), rule.1].concat()));
                         //} else {
                         //    recursive.insert(rule);
                         //}
                     } else {
-                        different_atomic.insert((rule.0.clone(), [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
+                        different_atomic.insert((rule.0.clone(), [rule.1.clone(), Regex::collect_starting_null_rules(&rule)].concat()));
                         //if let RegexSymbol::Nulled(null_rule) = &rule.0[0] {
                         //    different_atomic.insert((rule.0.clone(), [null_rule.clone(), rule.1].concat()));
                         //} else {
@@ -95,7 +95,7 @@ impl Regex {
                     }
                 },
                 RegexSymbol::Epsilon => {
-                    direct.insert((rule.0.clone(), [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
+                    direct.insert((rule.0.clone(), [rule.1.clone(), Regex::collect_starting_null_rules(&rule)].concat()));
                     //if let RegexSymbol::Nulled(null_rule) = &rule.0[0] {
                     //    direct.insert((rule.0.clone(), [null_rule.clone(), rule.1].concat()));
                     //} else {
@@ -106,14 +106,14 @@ impl Regex {
                     if t == *terminal && nullable_atomic {
                         if no_nulled_rule.0.len() > 1 {
                             //direct.insert((rule.0[1..].to_vec(), [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
-                            direct.insert((no_nulled_rule.0[1..].to_vec(), [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
+                            direct.insert((no_nulled_rule.0[1..].to_vec(), [rule.1.clone(), Regex::collect_starting_null_rules(&rule)].concat()));
                             //if let RegexSymbol::Nulled(null_rule) = &rule.0[0] {
                             //    direct.insert((rule.0[1..].to_vec(), [null_rule.clone(), rule.1].concat()));
                             //} else {
                             //    direct.insert((rule.0[1..].to_vec(), rule.1));
                             //}
                         } else {
-                            direct.insert((vec![RegexSymbol::Epsilon], [Regex::collect_starting_null_rules(&rule), rule.1].concat()));
+                            direct.insert((vec![RegexSymbol::Epsilon], [rule.1.clone(), Regex::collect_starting_null_rules(&rule)].concat()));
                             //if let RegexSymbol::Nulled(null_rule) = &rule.0[0] {
                             //    direct.insert((vec![RegexSymbol::Epsilon], [null_rule.clone(), rule.1].concat()));
                             //} else {
@@ -171,20 +171,25 @@ impl Regex {
                                 for ntdirect_rule in ntdirect.clone() {
                                     //direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
                                     if different_rule.0.len() <= 1 {
-                                        direct.insert((ntdirect_rule.0.clone(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                        //direct.insert((ntdirect_rule.0.clone(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                        direct.insert((ntdirect_rule.0.clone(), [&different_rule.1[..], &ntdirect_rule.1[..]].concat()));
                                     } else {
-                                        direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                        //direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&ntdirect_rule.1[..], &different_rule.1[..]].concat()));
+                                        direct.insert(([&ntdirect_rule.0[1..], &different_rule.0[1..]].concat(), [&different_rule.1[..], &ntdirect_rule.1[..]].concat()));
                                     }
                                 }
                                 for ntrecursive_rule in ntrecursive.clone() {
-                                    recursive.insert(([&[RegexSymbol::AtomicLanguage(nonterminal, t)], &ntrecursive_rule.0[1..], &different_rule.0[1..]].concat(), ntrecursive_rule.1.clone()));
+                                    //recursive.insert(([&[RegexSymbol::AtomicLanguage(nonterminal, t)], &ntrecursive_rule.0[1..], &different_rule.0[1..]].concat(), ntrecursive_rule.1.clone()));
+                                    recursive.insert(([&[RegexSymbol::AtomicLanguage(nonterminal, t)], &different_rule.0[1..], &ntrecursive_rule.0[1..]].concat(), ntrecursive_rule.1.clone()));
                                 }
                                 for ntdifferent_rule in ntdifferent.clone() {
                                     if let RegexSymbol::AtomicLanguage(nt2, _) = ntdifferent_rule.0[0] {
                                         if nt2 == nonterminal {
-                                            recursive.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&ntdifferent_rule.1[..], &different_rule.1[..]].concat()));
+                                            //recursive.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&ntdifferent_rule.1[..], &different_rule.1[..]].concat()));
+                                            recursive.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&different_rule.1[..], &ntdifferent_rule.1[..]].concat()));
                                         } else {
-                                            different_atomic.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&ntdifferent_rule.1[..], &different_rule.1[..]].concat()));
+                                            //different_atomic.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&ntdifferent_rule.1[..], &different_rule.1[..]].concat()));
+                                            different_atomic.insert(([&ntdifferent_rule.0[..], &different_rule.0[1..]].concat(), [&different_rule.1[..], &ntdifferent_rule.1[..]].concat()));
                                         }
                                     }
                                 }
@@ -306,11 +311,11 @@ impl Regex {
         }
         if different_recursive.len() > 0 {
             if different_recursive.len() == 1 {
-                res_nodes.extend(different_recursive[0].0.prepend_rule(&different_recursive[0].1));
+                res_nodes.extend(different_recursive[0].0.append_rule(&different_recursive[0].1));
             } else {
                 let mut different_recursive_node_vec: Vec<WordNode> = Vec::new();
                 for different_recursive_node in different_recursive {
-                    different_recursive_node_vec.extend(different_recursive_node.0.prepend_rule(&different_recursive_node.1));
+                    different_recursive_node_vec.extend(different_recursive_node.0.append_rule(&different_recursive_node.1));
                 }
                 res_nodes.extend(different_recursive_node_vec);
             }
@@ -423,6 +428,14 @@ impl RegexNode {
         new_nodes
     }
 
+    fn append_rule(&self, rules: &Rules) -> Vec<WordNode> {
+        let mut new_nodes: Vec<WordNode> = Vec::new();
+        for n in &self.nodes {
+            new_nodes.push(n.append_rule(rules));
+        }
+        new_nodes
+    }
+
     pub fn print_with_rules(&self) {
         print!("(");
         for node in &self.nodes {
@@ -431,14 +444,23 @@ impl RegexNode {
         print!(")");
     }
 
-    pub fn is_e_node(&self) -> bool {
-        let mut res: bool = true;
+    pub fn is_e_node_get_rules(&self) -> (bool, Option<HashSet<Rules>>) {
+        let mut res_bool: bool = true;
+        let mut res_set: HashSet<Rules> = HashSet::new();
         for node in &self.nodes {
-            if !node.is_e_node() {
-                res = false;
+            if let (true, opt_rules) = node.is_e_node_get_rules() {
+                if let Some(rules) = opt_rules {
+                    res_set.extend(rules);
+                }
+            } else {
+                res_bool = false;
             }
         }
-        res
+        if res_set.is_empty() {
+            (res_bool, None)
+        } else {
+            (res_bool, Some(res_set))
+        }
     }
 }
 
@@ -507,6 +529,14 @@ impl WordNode {
         let mut new_words: BTreeSet<(WordNodeWord, Rules)> = BTreeSet::new();
         for (word, rule) in &self.words {
             new_words.insert((word.clone(), [rule.clone(), rules.clone()].concat()));
+        }
+        WordNode {words: new_words, kleene_star: self.kleene_star}
+    }
+
+    fn append_rule(&self, rules: &Rules) -> WordNode {
+        let mut new_words: BTreeSet<(WordNodeWord, Rules)> = BTreeSet::new();
+        for (word, rule) in &self.words {
+            new_words.insert((word.clone(), [rules.clone(), rule.clone()].concat()));
         }
         WordNode {words: new_words, kleene_star: self.kleene_star}
     }
