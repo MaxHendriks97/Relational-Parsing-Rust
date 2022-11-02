@@ -11,8 +11,8 @@ mod finite_state_automaton;
 pub use finite_state_automaton::*;
 
 type LangIdent = usize;
-type Edges = BTreeSet<(State, LangIdent, Option<Rules>)>;
-type CompletedParses = Option<BTreeSet<Rules>>;
+type Edges = HashSet<(State, LangIdent, Rules)>;
+type CompletedParses = HashSet<Rules>;
 
 #[derive(Debug)]
 pub struct Language {
@@ -25,17 +25,17 @@ pub struct Language {
 impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "id: {}, final: {}\n", self.id, self.fin)?;
-        if self.fin && self.completed_parses.is_some() {
+        if self.fin && !self.completed_parses.is_empty() {
             write!(f, "completed parses:\n")?;
-            for rules in self.completed_parses.as_ref().unwrap() {
+            for rules in &self.completed_parses {
                 write!(f, "  ")?;
                 print_rules(&rules, f)?;
                 write!(f, "\n")?;
             }
         }
-        for (state, lang, opt_rules) in &self.edges {
+        for (state, lang, rules) in &self.edges {
             write!(f, "  ({}, {})", state, lang)?;
-            if let Some(rules) = opt_rules {
+            if rules.len() > 0 {
                 write!(f, " rules: ")?;
                 print_rules(rules, f)?;
             }
@@ -46,19 +46,8 @@ impl fmt::Display for Language {
 }
 
 impl Language {
-    pub fn new(id: LangIdent, edges: BTreeSet<(State, LangIdent, Option<Rules>)>, completed_parses: Option<BTreeSet<Rules>>, fin: bool) -> Language {
+    pub fn new(id: LangIdent, edges: HashSet<(State, LangIdent, Rules)>, completed_parses: HashSet<Rules>, fin: bool) -> Language {
         Language {id, edges, completed_parses, fin}
-    }
-
-    pub fn extend_completed_parse(&mut self, other_completed_parse: CompletedParses) {
-        if let Some(other_parses) = other_completed_parse {
-            if let Some(parses) = self.completed_parses.as_mut() {
-                parses.extend(other_parses);
-            }
-            else {
-                self.completed_parses = Some(other_parses);
-            }
-        }
     }
 }
 
@@ -80,7 +69,7 @@ impl fmt::Display for LanguageList {
 impl LanguageList {
     pub fn new() -> LanguageList {
         let mut languages: Vec<Language> = Vec::new();
-        languages.push(Language{id: 0, edges: BTreeSet::new(), completed_parses: None, fin: true});
+        languages.push(Language{id: 0, edges: HashSet::new(), completed_parses: HashSet::new(), fin: true});
         LanguageList {languages, highest_id: 0}
     }
 
@@ -101,19 +90,6 @@ impl LanguageList {
         &self.languages[self.highest_id]
     }
 
-    //pub fn insert_new_language(&mut self, edges: BTreeSet<(State, LangIdent, Option<Rules>)>, fin: bool) -> LangIdent {
-    //    self.highest_id += 1;
-    //    self.languages.push(Language{id: self.highest_id, edges, fin});
-    //    self.highest_id
-    //}
-
-    //pub fn get_lang_ident_or_insert(&mut self, edges: BTreeSet<(State, LangIdent, Option<Rules>)>, fin: bool) -> usize {
-    //    if let Some(lang_ident) = self.languages.iter().position(|l| l.fin == fin && l.edges == edges) {
-    //        lang_ident
-    //    } else {
-    //        self.insert_new_language(edges, fin)
-    //    }
-    //}
 }
 
 pub struct ParseRound {
@@ -124,19 +100,14 @@ pub struct ParseRound {
 
 impl ParseRound {
     pub fn new() -> ParseRound {
-        //let deriv_language = Language::new(language_list.highest_id+1, None, false);
-        //let prep_language = Language::new(language_list.highest_id+2, None, false);
         ParseRound{deriv_language: None, prep_deriv_language: None, prep_language: None}
     }
 
     pub fn register(self, language_list: &mut LanguageList, finite_state_automaton: &FiniteStateAutomaton) -> Result<(), &'static str> {
-        //do e-simulation
         if let (Some(mut prep_deriv_lang), Some(mut prep_lang)) = (self.prep_deriv_language, self.prep_language) {
             if let Some(deriv_lang) = self.deriv_language {
-                //ParseRound::e_sim(&mut deriv_lang, language_list, finite_state_automaton);
-                //println!("deriv after e_sim: {}", deriv_lang);
                 prep_lang.edges.extend(deriv_lang.edges);
-                prep_lang.extend_completed_parse(deriv_lang.completed_parses);
+                prep_lang.completed_parses.extend(deriv_lang.completed_parses);
                 if deriv_lang.fin {
                     prep_lang.fin = true;
                 }
@@ -161,35 +132,32 @@ impl ParseRound {
     }
 
     pub fn prep_deriv_e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
-        let mut to_simulate: Vec<(State, LangIdent, Option<Rules>)> = lang.edges.clone().into_iter().collect();
+        let mut to_simulate: Vec<(State, LangIdent, Rules)> = lang.edges.clone().into_iter().collect();
 
-        'sim: while let Some((source_state, dest_lang, opt_applied_rules)) = to_simulate.pop() {
+        while let Some((source_state, dest_lang, applied_rules)) = to_simulate.pop() {
             if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
-                for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(dest_lang).unwrap();
                     if !dest_language.fin {
                         continue;
                     }
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, dest_lang, opt_rules) in &dest_language.edges {
-                                let opt_concat_rules = concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, &opt_applied_rules), opt_rules);
-                                lang.edges.insert((*state, *dest_lang, opt_concat_rules.clone()));
-                                to_simulate.push((*state, *dest_lang, opt_concat_rules));
+                            for (state, dest_lang, rules) in &dest_language.edges {
+                                let res_rules: Rules = [new_rules.clone(), applied_rules.clone(), rules.clone()].concat();
+                                lang.edges.insert((*state, *dest_lang, res_rules.clone()));
+                                to_simulate.push((*state, *dest_lang, res_rules));
                             }
                         }
                     } else if end_state_accepting {
-                        if let Some(rules) = concatenate_opt_rules(opt_new_rules, &opt_applied_rules) {
-                            lang.edges.insert((*end_state, dest_lang, Some(rules.clone())));
-                            to_simulate.push((*end_state, dest_lang, Some(rules)));
-                        } else {
-                            lang.edges.insert((*end_state, dest_lang, None));
-                            to_simulate.push((*end_state, dest_lang, None));
-                        }
-                        for (state, dest_lang, opt_rules) in &dest_language.edges {
-                            let opt_concat_rules = concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, &opt_applied_rules), opt_rules);
-                            lang.edges.insert((*state, *dest_lang, opt_concat_rules.clone()));
-                            to_simulate.push((*state, *dest_lang, opt_concat_rules));
+                        let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
+                        lang.edges.insert((*end_state, dest_lang, res_rules.clone()));
+                        to_simulate.push((*end_state, dest_lang, res_rules.clone()));
+
+                        for (state, dest_lang, rules) in &dest_language.edges {
+                            let rules: Rules = [res_rules.clone(), rules.clone()].concat();
+                            lang.edges.insert((*state, *dest_lang, rules.clone()));
+                            to_simulate.push((*state, *dest_lang, rules));
                         }
                     }
                 }
@@ -198,42 +166,41 @@ impl ParseRound {
     }
 
     pub fn e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
-        let mut to_simulate: Vec<(State, LangIdent, Option<Rules>)> = lang.edges.clone().into_iter().collect();
+        let mut to_simulate: Vec<(State, LangIdent, Rules)> = lang.edges.clone().into_iter().collect();
 
-        while let Some((source_state, dest_lang, opt_applied_rules)) = to_simulate.pop() {
+        while let Some((source_state, dest_lang, applied_rules)) = to_simulate.pop() {
             if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
-                for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(dest_lang).unwrap();
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, dest_lang, opt_rules) in &dest_language.edges {
-                                let opt_concat_rules = concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, &opt_applied_rules), opt_rules);
-                                lang.edges.insert((*state, *dest_lang, opt_concat_rules.clone()));
-                                to_simulate.push((*state, *dest_lang, opt_concat_rules));
+                            for (state, dest_lang, rules) in &dest_language.edges {
+                                let res_rules: Rules = [new_rules.clone(), applied_rules.clone(), rules.clone()].concat();
+                                lang.edges.insert((*state, *dest_lang, res_rules.clone()));
+                                to_simulate.push((*state, *dest_lang, res_rules));
                             }
                         }
                         if dest_language.fin {
                             lang.fin = true;
-                            if let Some(rules) = concatenate_opt_rules(opt_new_rules, &opt_applied_rules) {
-                                lang.completed_parses.get_or_insert(BTreeSet::new()).insert(rules);
+                            let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
+                            if res_rules.len() > 0 {
+                                lang.completed_parses.insert(res_rules);
                             }
                         }
                     } else if end_state_accepting {
-                        if let Some(rules) = concatenate_opt_rules(opt_new_rules, &opt_applied_rules) {
-                            lang.completed_parses.get_or_insert(BTreeSet::new()).insert(rules.clone());
-                            lang.edges.insert((*end_state, dest_lang, Some(rules.clone())));
-                            to_simulate.push((*end_state, dest_lang, Some(rules)));
-                        } else {
-                            lang.edges.insert((*end_state, dest_lang, None));
-                            to_simulate.push((*end_state, dest_lang, None));
+                        let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
+                        if !res_rules.is_empty() {
+                            lang.completed_parses.insert(res_rules.clone());
                         }
+                        lang.edges.insert((*end_state, dest_lang, res_rules.clone()));
+                        to_simulate.push((*end_state, dest_lang, res_rules.clone()));
                         if dest_language.fin {
                             lang.fin = true;
                         }
-                        for (state, dest_lang, opt_rules) in &dest_language.edges {
-                            let opt_concat_rules = concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, &opt_applied_rules), opt_rules);
-                            lang.edges.insert((*state, *dest_lang, opt_concat_rules.clone()));
-                            to_simulate.push((*state, *dest_lang, opt_concat_rules));
+                        for (state, dest_lang, rules) in &dest_language.edges {
+                            let rules: Rules = [res_rules.clone(), rules.clone()].concat();
+                            lang.edges.insert((*state, *dest_lang, rules.clone()));
+                            to_simulate.push((*state, *dest_lang, rules));
                         }
                     }
                 }
@@ -242,43 +209,42 @@ impl ParseRound {
     }
 
     pub fn derivative(&mut self, curr_lang: &Language, language_list: &LanguageList, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> (Edges, CompletedParses, bool) {
-        let mut edges: Edges = BTreeSet::new();
-        let mut completed_parses: CompletedParses = None;
+        let mut edges: Edges = HashSet::new();
+        let mut completed_parses: CompletedParses = HashSet::new();
         let mut fin: bool = false;
 
-        for (start_state, dest_lang, opt_applied_rules) in &curr_lang.edges {
+        for (start_state, dest_lang, applied_rules) in &curr_lang.edges {
             if let Some(destinations) = finite_state_automaton.simulate(start_state, symbol) {
-                for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(*dest_lang).unwrap();
+                    let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, lang, opt_rules) in &dest_language.edges {
-                                edges.insert((*state, *lang, concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, opt_applied_rules), opt_rules)));
+                            for (state, lang, rules) in &dest_language.edges {
+                                edges.insert((*state, *lang, [res_rules.clone(), rules.clone()].concat()));
                             }
                         }
                         if dest_language.fin {
                             fin = true;
-                            if let Some(rules) = concatenate_opt_rules(opt_new_rules, opt_applied_rules) {
+                            if res_rules.len() > 0 {
                                 println!("Writing completed parses");
-                                completed_parses.get_or_insert(BTreeSet::new()).insert(rules);
+                                completed_parses.insert(res_rules);
                             }
                         }
                     } else if end_state_accepting {
-                        if let Some(rules) = concatenate_opt_rules(opt_new_rules, opt_applied_rules) {
+                        if res_rules.len() > 0 {
                             println!("Writing completed parses");
-                            completed_parses.get_or_insert(BTreeSet::new()).insert(rules.clone());
-                            edges.insert((*end_state, *dest_lang, Some(rules)));
-                        } else {
-                            edges.insert((*end_state, *dest_lang, None));
+                            completed_parses.insert(res_rules.clone());
                         }
+                        edges.insert((*end_state, *dest_lang, res_rules.clone()));
                         if dest_language.fin {
                             fin = true;
                         }
-                        for (state, lang, opt_rules) in &dest_language.edges {
-                            edges.insert((*state, *lang, concatenate_opt_rules(&concatenate_opt_rules(opt_new_rules, opt_applied_rules), opt_rules)));
+                        for (state, lang, rules) in &dest_language.edges {
+                            edges.insert((*state, *lang, [res_rules.clone(), rules.clone()].concat()));
                         }
                     } else {
-                        edges.insert((*end_state, *dest_lang, concatenate_opt_rules(opt_new_rules, opt_applied_rules)));
+                        edges.insert((*end_state, *dest_lang, res_rules));
                     }
                 }
             }
@@ -303,14 +269,12 @@ impl ParseRound {
         if !edges.is_empty() || fin {
             if let Some(mut lang) = self.prep_deriv_language.as_mut() {
                 lang.edges.extend(edges);
-                lang.extend_completed_parse(completed_parses);
+                lang.completed_parses.extend(completed_parses);
                 if fin {
                     lang.fin = true;
                 }
-                //ParseRound::e_sim(lang, language_list, finite_state_automaton);
             } else {
                 let mut res_lang = Language::new(curr_lang.id + 1, edges, completed_parses, fin);
-                //ParseRound::e_sim(&mut res_lang, language_list, finite_state_automaton);
                 self.prep_deriv_language = Some(res_lang);
             }
             true
@@ -319,48 +283,42 @@ impl ParseRound {
         }
     }
 
-    pub fn prepend(&mut self, atomic: (&State, &Option<HashSet<Rules>>, bool)) {
+    pub fn prepend(&mut self, atomic: (&State, &HashSet<Rules>, bool)) {
         if let Some(prep_deriv_language) = &self.prep_deriv_language {
-            let mut edges: Edges = BTreeSet::new();
+            let mut edges: Edges = HashSet::new();
             let mut fin: bool = false;
-            let mut completed_parses: CompletedParses = None;
+            let mut completed_parses: CompletedParses = HashSet::new();
 
-            if let Some(rules_set) = &atomic.1 {
+            if !atomic.1.is_empty() {
                 if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
-                    for rules in rules_set {
-                        edges.insert((*atomic.0, 0, Some(rules.clone())));
+                    for rules in atomic.1 {
+                        edges.insert((*atomic.0, 0, rules.clone()));
                     }
                 } else {
-                    for rules in rules_set {
-                        edges.insert((*atomic.0, prep_deriv_language.id, Some(rules.clone())));
+                    for rules in atomic.1 {
+                        edges.insert((*atomic.0, prep_deriv_language.id, rules.clone()));
                     }
                 }
             } else {
                 if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
-                    edges.insert((*atomic.0, 0, None));
+                    edges.insert((*atomic.0, 0, Vec::new()));
                 } else {
-                    edges.insert((*atomic.0, prep_deriv_language.id, None));
+                    edges.insert((*atomic.0, prep_deriv_language.id, Vec::new()));
                 }
             }
 
             if atomic.2 {
-                if let Some(rules_set) = atomic.1 {
-                    for rules in rules_set {
-                        for (state, lang, opt_rules) in prep_deriv_language.edges.clone() {
-                            edges.insert((state, lang, concatenate_opt_rules(&Some(rules.clone()), &opt_rules)));
-                        }
-                        if let Some(comp_parse_set) = &prep_deriv_language.completed_parses {
-                            for parse in comp_parse_set {
-                                completed_parses.get_or_insert(BTreeSet::new()).insert([rules.clone(), parse.clone()].concat());
-                            }
-                        }
+                for rules in atomic.1 {
+                    for (state, lang, applied_rules) in prep_deriv_language.edges.clone() {
+                        edges.insert((state, lang, [rules.clone(), applied_rules.clone()].concat()));
+                    }
+                    for parse in &prep_deriv_language.completed_parses {
+                        completed_parses.insert([rules.clone(), parse.clone()].concat());
                     }
                 }
                 if prep_deriv_language.fin {
                     fin = true;
-                    if let Some(comp_parse_set) = &prep_deriv_language.completed_parses {
-                        completed_parses.get_or_insert(BTreeSet::new()).extend(comp_parse_set.clone());
-                    }
+                    completed_parses.extend(prep_deriv_language.completed_parses.clone());
                     edges.extend(prep_deriv_language.edges.clone());
                 }
             }
@@ -389,7 +347,7 @@ pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool 
     let mut language_list: LanguageList = LanguageList::new();
 
     let (start_state, start_accepting) = finite_state_automaton.get_start();
-    language_list.insert_new_language(Language::new(language_list.highest_id+1, BTreeSet::from([(start_state, 0, None)]), None, start_accepting));
+    language_list.insert_new_language(Language::new(language_list.highest_id+1, HashSet::from([(start_state, 0, Vec::new())]), HashSet::new(), start_accepting));
 
     for token in token_string {
         println!("Next token: {}", token);

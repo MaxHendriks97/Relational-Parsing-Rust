@@ -23,8 +23,8 @@ pub struct FiniteStateAutomaton {
     states: HashSet<State>,
     accepting_states: HashSet<State>,
     start: State,
-    transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Option<Rules>)>>>,
-    atomic_to_state: HashMap<(Symbol, Terminal), (State, Option<HashSet<Rules>>)>,
+    transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>>,
+    atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)>,
 }
 
 impl fmt::Display for FiniteStateAutomaton {
@@ -51,27 +51,8 @@ impl fmt::Display for FiniteStateAutomaton {
         write!(f, "Transition to rules:\n")?;
         for (state, transition_list) in &self.transitions {
             for (symbol, destinations) in transition_list {
-                for (_, opt_rules) in destinations {
-                    if let Some(rules) = opt_rules {
-                        write!(f, "{}: {}: ", state, symbol)?;
-                        for (nonterminal, rule) in rules {
-                            write!(f, "[{} -> ", nonterminal)?;
-                            for symbol in rule {
-                                write!(f, "{}", symbol)?;
-                            }
-                            write!(f, "] ")?;
-                        }
-                        write!(f, "\n")?;
-                    }
-                }
-            }
-        }
-        write!(f, "Atomic to state:\n")?;
-        for ((symbol, terminal), (state, opt_rules)) in &self.atomic_to_state {
-            write!(f, "[{}]^({}) {} ", symbol, terminal, state)?;
-            if let Some(rule_set) = opt_rules {
-                for rules in rule_set {
-                    write!(f, "| ")?;
+                for (_, rules) in destinations {
+                    write!(f, "{}: {}: ", state, symbol)?;
                     for (nonterminal, rule) in rules {
                         write!(f, "[{} -> ", nonterminal)?;
                         for symbol in rule {
@@ -79,9 +60,24 @@ impl fmt::Display for FiniteStateAutomaton {
                         }
                         write!(f, "] ")?;
                     }
-                    write!(f, "|")?;
+                    write!(f, "\n")?;
                 }
-           }
+            }
+        }
+        write!(f, "Atomic to state:\n")?;
+        for ((symbol, terminal), (state, rule_set)) in &self.atomic_to_state {
+            write!(f, "[{}]^({}) {} ", symbol, terminal, state)?;
+            for rules in rule_set {
+                write!(f, "| ")?;
+                for (nonterminal, rule) in rules {
+                    write!(f, "[{} -> ", nonterminal)?;
+                    for symbol in rule {
+                        write!(f, "{}", symbol)?;
+                    }
+                    write!(f, "] ")?;
+                }
+                write!(f, "|")?;
+            }
             write!(f, "\n")?;
         }
         Ok(())
@@ -89,7 +85,7 @@ impl fmt::Display for FiniteStateAutomaton {
 }
 
 impl FiniteStateAutomaton {
-    fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Option<Rules>)>>>, atomic_to_state: HashMap<(Symbol, Terminal), (State, Option<HashSet<Rules>>)>) -> Result<FiniteStateAutomaton, StateErrors> {
+    fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>>, atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)>) -> Result<FiniteStateAutomaton, StateErrors> {
         if !states.contains(&start) {
             return Err(StateErrors::StartNotInStates(start));
         }
@@ -125,10 +121,10 @@ impl FiniteStateAutomaton {
         let epsilon: State = 1;
         let mut states: HashSet<State> = HashSet::from([start, epsilon]);
         let mut accepting_states: HashSet<State> = HashSet::from([epsilon]);
-        let mut transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Option<Rules>)>>> = HashMap::new();
-        let mut atomic_to_state: HashMap<(Symbol, Terminal), (State, Option<HashSet<Rules>>)> = HashMap::new();
+        let mut transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>> = HashMap::new();
+        let mut atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)> = HashMap::new();
 
-        transitions.insert(start, HashMap::from([(Symbol::Nonterminal(start_nt), HashSet::from([(epsilon, None)]))]));
+        transitions.insert(start, HashMap::from([(Symbol::Nonterminal(start_nt), HashSet::from([(epsilon, Vec::new())]))]));
 
         if rules.get(&start_nt).unwrap().contains(&vec![Symbol::Epsilon]) {
             accepting_states.insert(start);
@@ -136,7 +132,7 @@ impl FiniteStateAutomaton {
 
         // add terminal derivations to atomic_to_state
         for terminal in terminals {
-            atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), (epsilon, None));
+            atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), (epsilon, HashSet::new()));
         }
 
         let atomic_regex: Regex = Regex::new(terminals, rules);
@@ -144,14 +140,14 @@ impl FiniteStateAutomaton {
         let mut highest_state: State = 1;
 
         for ((nonterminal, terminal), node) in atomic_regex.regex {
-            if let (true, opt_rules) = node.is_e_node_get_rules() {
-                atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (epsilon, opt_rules));
+            if let (true, rules) = node.is_e_node_get_rules() {
+                atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (epsilon, rules));
                 continue;
             }
 
-            let mut regex_to_state_key: VecDeque<WordNode> = VecDeque::new();
             let mut wordnode_queue: Vec<WordNode> = node.nodes.clone();
-            let mut atomic_rules: Option<HashSet<Rules>> = None;
+            let mut regex_to_state_key: VecDeque<WordNode> = VecDeque::with_capacity(wordnode_queue.len());
+            let mut atomic_rules: HashSet<Rules> = HashSet::new();
 
             let mut node_end: State;
 
@@ -164,8 +160,8 @@ impl FiniteStateAutomaton {
 
                 if let Some((dest, end)) = regex_to_state.get(&regex_to_state_key) {
                     let (dest, end) = (*dest, *end);
-                    if let (true, opt_rule_set) = wordnode.is_e_node_get_rules() {
-                        atomic_rules = opt_rule_set;
+                    if let (true, rule_set) = wordnode.is_e_node_get_rules() {
+                        atomic_rules = rule_set;
                         regex_to_state_key.push_front(wordnode.clone());
                         regex_to_state.insert(regex_to_state_key.clone(), (dest, end));
                         continue;
@@ -175,8 +171,8 @@ impl FiniteStateAutomaton {
                     if let Some((dest, end)) = regex_to_state.get(&prev_key) {
                         node_end = *dest;
                         let end = *end;
-                        if let (true, opt_rule_set) = wordnode.is_e_node_get_rules() {
-                            atomic_rules = opt_rule_set;
+                        if let (true, rule_set) = wordnode.is_e_node_get_rules() {
+                            atomic_rules = rule_set;
                             regex_to_state.insert(regex_to_state_key.clone(), (node_end, end));
                             continue;
                         }
@@ -185,8 +181,8 @@ impl FiniteStateAutomaton {
                     } else {
                         highest_state += 1;
                         node_start = highest_state;
-                        if let (true, opt_rule_set) = wordnode.is_e_node_get_rules() {
-                            atomic_rules = opt_rule_set;
+                        if let (true, rule_set) = wordnode.is_e_node_get_rules() {
+                            atomic_rules = rule_set;
                             regex_to_state.insert(regex_to_state_key.clone(), (node_start, node_start));
                             continue;
                         }
@@ -203,6 +199,7 @@ impl FiniteStateAutomaton {
                 for (rules, wordnodeword_set) in wordnode.get_by_base_rules() {
                     let mut sub_states: Vec<State> = vec![node_start];
                     let mut opt_penultimate_state: Option<State> = None;
+
                     for wordnodeword in wordnodeword_set {
                         let mut source: State = node_start;
                         let mut target: State;
@@ -224,7 +221,7 @@ impl FiniteStateAutomaton {
                                 if target == node_end {
                                     let entry = transitions.entry(source).or_default().entry(Symbol::Epsilon).or_default();
                                     
-                                    entry.insert((target, Some([rules.clone(), carried_rules].concat())));
+                                    entry.insert((target, [rules.clone(), carried_rules].concat()));
                                     carried_rules = Vec::new();
                                 }
                             } else {
@@ -249,25 +246,21 @@ impl FiniteStateAutomaton {
                                             opt_penultimate_state = Some(penultimate_state);
                                         }
                                         if carried_rules.len() > 0 {
-                                            entry.insert((penultimate_state, Some(carried_rules)));
+                                            entry.insert((penultimate_state, carried_rules));
                                         } else {
-                                            entry.insert((penultimate_state, None));
+                                            entry.insert((penultimate_state, Vec::new()));
                                         }
-                                        transitions.entry(penultimate_state).or_default().entry(Symbol::Epsilon).or_default().insert((target, Some(rules.clone())));
+                                        transitions.entry(penultimate_state).or_default().entry(Symbol::Epsilon).or_default().insert((target, rules.clone()));
                                     } else {
-                                        entry.insert((target, Some([rules.clone(), carried_rules].concat())));
+                                        entry.insert((target, [rules.clone(), carried_rules].concat()));
                                     }
                                     carried_rules = Vec::new();
                                 }
-                                //if source == node_start {
-                                //    entry.insert((target, Some([carried_rules, rules.clone()].concat())));
-                                //    carried_rules = Vec::new();
-                                //}
                                 else if carried_rules.len() > 0 {
-                                    entry.insert((target, Some(carried_rules)));
+                                    entry.insert((target, carried_rules));
                                     carried_rules = Vec::new();
                                 } else {
-                                    entry.insert((target, None));
+                                    entry.insert((target, Vec::new()));
                                 }
                                 source = sub_states[index+1];
                             }
@@ -291,7 +284,6 @@ impl FiniteStateAutomaton {
     pub fn to_dot(&self, filename: &str) -> std::io::Result<()> {
         let mut file = File::create(format!("{}.dot", filename))?;
         write!(file, "digraph G {{\n")?;
-        //write!(file, "{} [ label=\"start\" ]\n", &self.start)?;
         let mut state_to_shape: HashMap<State, &str> = HashMap::new();
         for state in &self.states {
             if self.accepting_states.contains(state) {
@@ -303,11 +295,11 @@ impl FiniteStateAutomaton {
         for state in &self.states {
             write!(file, "{} [ shape={} ]\n", state, state_to_shape.get(state).unwrap())?;
         }
-        for ((symbol, terminal), (state, opt_rule_set)) in &self.atomic_to_state {
+        for ((symbol, terminal), (state, rule_set)) in &self.atomic_to_state {
             match symbol {
                 Symbol::Nonterminal(nonterm) => {
                     write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}", nonterm, terminal, nonterm, terminal, state)?;
-                    if let Some(rule_set) = opt_rule_set {
+                    if rule_set.len() > 0 {
                         write!(file, "[ label=\"")?;
                         for rules in rule_set {
                             write!(file, "(")?;
@@ -330,20 +322,18 @@ impl FiniteStateAutomaton {
         }
         for (source, transition_list) in &self.transitions {
             for (symbol, destinations) in transition_list {
-                for (dest, opt_rules) in destinations {
+                for (dest, rules) in destinations {
                     match symbol {
                         Symbol::Epsilon => write!(file, "{} -> {} [ label=\"e ", source, dest)?,
                         Symbol::Nonterminal(nonterminal) => write!(file, "{} -> {} [ label=\"{} ", source, dest, nonterminal)?,
                         Symbol::Terminal(terminal) => write!(file, "{} -> {} [ label=\"{} ", source, dest, terminal)?,
                     }
-                    if let Some(rules) = opt_rules {
-                        for rule in rules {
-                            write!(file, "[{} -> ", &rule.0)?;
-                            for symbol in &rule.1 {
-                                write!(file, "{}", symbol)?;
-                            }
-                            write!(file, "] ")?;
+                    for rule in rules {
+                        write!(file, "[{} -> ", &rule.0)?;
+                        for symbol in &rule.1 {
+                            write!(file, "{}", symbol)?;
                         }
+                        write!(file, "] ")?;
                     }
                     write!(file, "\" ]\n")?;
                 }
@@ -352,13 +342,13 @@ impl FiniteStateAutomaton {
         write!(file, "}}")
     }
 
-    pub fn simulate(&self, curr_state: &State, symbol: Symbol) -> Option<HashSet<(&State, &Option<Rules>, bool)>> {
+    pub fn simulate(&self, curr_state: &State, symbol: Symbol) -> Option<HashSet<(&State, &Rules, bool)>> {
         self.transitions.get(&curr_state)?
             .get(&symbol)
             .map(|destinations| {
-                let mut res: HashSet<(&State, &Option<Rules>, bool)> = HashSet::new();
-                for (dest, opt_rules) in destinations {
-                    res.insert((dest, opt_rules, self.is_accepting(dest)));
+                let mut res: HashSet<(&State, &Rules, bool)> = HashSet::new();
+                for (dest, rules) in destinations {
+                    res.insert((dest, rules, self.is_accepting(dest)));
                 }
                 res
             })
@@ -372,9 +362,9 @@ impl FiniteStateAutomaton {
         (self.start, self.is_accepting(&self.start))
     }
 
-    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<(&State, &Option<HashSet<Rules>>, bool)> {
+    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<(&State, &HashSet<Rules>, bool)> {
         self.atomic_to_state.get(&(symbol, terminal))
-            .map(|(dest, opt_rules_set)| (dest, opt_rules_set, self.is_accepting(dest)))
+            .map(|(dest, rules_set)| (dest, rules_set, self.is_accepting(dest)))
     }
 
     pub fn has_transition(&self, curr_state: &State) -> bool {
