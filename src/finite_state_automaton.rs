@@ -6,7 +6,7 @@ use std::io::Write;
 use crate::word::{*, self};
 use crate::regex::*;
 
-pub type State = u32;
+pub type State = usize;
 
 #[derive(Debug)]
 enum StateErrors {
@@ -225,12 +225,6 @@ impl FiniteStateAutomaton {
                                     let entry = transitions.entry(source).or_default().entry(Symbol::Epsilon).or_default();
                                     
                                     entry.insert((target, Some([rules.clone(), carried_rules].concat())));
-                                    //if source == node_start {
-                                    //    entry.insert((target, Some([carried_rules, rules.clone()].concat())));
-                                    //} else {
-                                    //    entry.insert((target, Some(carried_rules)));
-                                    //}
-                                    source = sub_states[index+1];
                                     carried_rules = Vec::new();
                                 }
                             } else {
@@ -254,7 +248,11 @@ impl FiniteStateAutomaton {
                                             penultimate_state = highest_state;
                                             opt_penultimate_state = Some(penultimate_state);
                                         }
-                                        entry.insert((penultimate_state, Some(carried_rules)));
+                                        if carried_rules.len() > 0 {
+                                            entry.insert((penultimate_state, Some(carried_rules)));
+                                        } else {
+                                            entry.insert((penultimate_state, None));
+                                        }
                                         transitions.entry(penultimate_state).or_default().entry(Symbol::Epsilon).or_default().insert((target, Some(rules.clone())));
                                     } else {
                                         entry.insert((target, Some([rules.clone(), carried_rules].concat())));

@@ -467,6 +467,21 @@ impl RegexNode {
 pub type Rule = (Nonterminal, Word);
 pub type Rules = Vec<Rule>;
 
+pub fn print_rules(rules: &Rules, f: &mut fmt::Formatter) -> fmt::Result {
+    for rule in rules {
+        print_rule(rule, f)?;
+    }
+    Ok(())
+}
+
+pub fn print_rule(rule: &Rule, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "[{} -> ", rule.0)?;
+    for symbol in &rule.1 {
+        write!(f, "{}", symbol)?;
+    }
+    write!(f, "]")
+}
+
 #[derive(Eq, PartialEq, Debug, Clone, Hash, PartialOrd, Ord)]
 
 pub enum WordNodeSymbol {
