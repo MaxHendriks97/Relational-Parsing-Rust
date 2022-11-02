@@ -12,8 +12,6 @@ pub struct Grammar {
     pub finite_state_automaton: FiniteStateAutomaton,
 }
 
-
-
 impl Grammar {
     pub fn new(terminals: HashSet<Terminal>, nonterminals: HashSet<Nonterminal>, start: Nonterminal, rules: HashMap<Nonterminal, HashSet<Word>>) -> Grammar {
         let mut symbols: HashSet<Symbol> = HashSet::new();
@@ -23,9 +21,7 @@ impl Grammar {
         for t in &terminals {
             symbols.insert(Symbol::Terminal(*t));
         }
-        //let finite_state_automaton: FiniteStateAutomaton = FiniteStateAutomaton { states: HashSet::new(), accepting_states: HashSet::new(), start: 0, transitions: HashMap::new(), atomic_to_state: HashMap::new() };
         let finite_state_automaton = FiniteStateAutomaton::build_fsa(&terminals, start, &rules);
         Grammar{terminals, nonterminals, symbols, start, rules, finite_state_automaton}
-        //Grammar{terminals, nonterminals, symbols, start, rules}
     }
 }
