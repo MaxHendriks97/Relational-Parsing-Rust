@@ -11,7 +11,7 @@ mod finite_state_automaton;
 pub use finite_state_automaton::*;
 
 type LangIdent = usize;
-type Edges = HashSet<(State, LangIdent, Rules)>;
+type Edges = HashMap<(State, LangIdent), HashSet<Rules>>;
 type CompletedParses = HashSet<Rules>;
 
 #[derive(Debug)]
@@ -28,16 +28,20 @@ impl fmt::Display for Language {
         if self.fin && !self.completed_parses.is_empty() {
             write!(f, "completed parses:\n")?;
             for rules in &self.completed_parses {
-                write!(f, "  ")?;
+                write!(f, "        ")?;
                 print_rules(&rules, f)?;
                 write!(f, "\n")?;
             }
         }
-        for (state, lang, rules) in &self.edges {
+        for ((state, lang), rules_set) in &self.edges {
             write!(f, "  ({}, {})", state, lang)?;
-            if rules.len() > 0 {
-                write!(f, " rules: ")?;
-                print_rules(rules, f)?;
+            if !rules_set.is_empty() {
+                write!(f, " rules:\n")?;
+                for rules in rules_set {
+                    write!(f, "        ")?;
+                    print_rules(rules, f)?;
+                    write!(f, "\n")?;
+                }
             }
             write!(f, "\n")?;
         }
@@ -46,7 +50,7 @@ impl fmt::Display for Language {
 }
 
 impl Language {
-    pub fn new(id: LangIdent, edges: HashSet<(State, LangIdent, Rules)>, completed_parses: HashSet<Rules>, fin: bool) -> Language {
+    pub fn new(id: LangIdent, edges: Edges, completed_parses: CompletedParses, fin: bool) -> Language {
         Language {id, edges, completed_parses, fin}
     }
 }
@@ -69,7 +73,7 @@ impl fmt::Display for LanguageList {
 impl LanguageList {
     pub fn new() -> LanguageList {
         let mut languages: Vec<Language> = Vec::new();
-        languages.push(Language{id: 0, edges: HashSet::new(), completed_parses: HashSet::new(), fin: true});
+        languages.push(Language{id: 0, edges: HashMap::new(), completed_parses: HashSet::new(), fin: true});
         LanguageList {languages, highest_id: 0}
     }
 
@@ -95,12 +99,13 @@ impl LanguageList {
 pub struct ParseRound {
     deriv_language: Option<Language>,
     prep_deriv_language: Option<Language>,
+    keep_prep_deriv: bool,
     prep_language: Option<Language>,
 }
 
 impl ParseRound {
     pub fn new() -> ParseRound {
-        ParseRound{deriv_language: None, prep_deriv_language: None, prep_language: None}
+        ParseRound{deriv_language: None, prep_deriv_language: None, keep_prep_deriv: false, prep_language: None}
     }
 
     pub fn register(self, language_list: &mut LanguageList, finite_state_automaton: &FiniteStateAutomaton) -> Result<(), &'static str> {
@@ -112,9 +117,11 @@ impl ParseRound {
                     prep_lang.fin = true;
                 }
             }
-            ParseRound::prep_deriv_e_sim(&mut prep_deriv_lang, language_list, finite_state_automaton);
-            println!("prep_deriv at end: {}", prep_deriv_lang);
-            language_list.insert_new_language(prep_deriv_lang);
+            if self.keep_prep_deriv {
+                ParseRound::prep_deriv_e_sim(&mut prep_deriv_lang, language_list, finite_state_automaton);
+                println!("prep_deriv at end: {}", prep_deriv_lang);
+                language_list.insert_new_language(prep_deriv_lang);
+            }
 
             ParseRound::e_sim(&mut prep_lang, language_list, finite_state_automaton);
             println!("prep at end: {}", prep_lang);
@@ -131,10 +138,41 @@ impl ParseRound {
         Ok(())
     }
 
-    pub fn prep_deriv_e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
-        let mut to_simulate: Vec<(State, LangIdent, Rules)> = lang.edges.clone().into_iter().collect();
+    fn prepend_rules_to_rules_set(rules: &Rules, rules_set: &HashSet<Rules>) -> HashSet<Rules> {
+        if rules_set.is_empty() && !rules.is_empty() {
+            HashSet::from([rules.clone()])
+        } else if rules.is_empty() {
+            rules_set.clone()
+        } else {
+            let mut res: HashSet<Rules> = HashSet::new();
+            for srules in rules_set {
+                res.insert([rules.clone(), srules.clone()].concat());
+            }
+            res
+        }
+    }
 
-        while let Some((source_state, dest_lang, applied_rules)) = to_simulate.pop() {
+    fn concatenate_rules_sets(first: &HashSet<Rules>, second: &HashSet<Rules>) -> HashSet<Rules> {
+        if first.is_empty() {
+            second.clone()
+        } else if second.is_empty() {
+            first.clone()
+        } else {
+            let mut res = HashSet::new();
+            for frules in first {
+                for srules in second {
+                    res.insert([frules.clone(), srules.clone()].concat());
+                }
+            }
+            res
+        }
+
+    }
+
+    fn prep_deriv_e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
+        let mut to_simulate: Vec<((State, LangIdent), HashSet<Rules>)> = lang.edges.clone().into_iter().collect();
+
+        while let Some(((source_state, dest_lang), applied_rules_set)) = to_simulate.pop() {
             if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
                 for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(dest_lang).unwrap();
@@ -143,21 +181,21 @@ impl ParseRound {
                     }
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, dest_lang, rules) in &dest_language.edges {
-                                let res_rules: Rules = [new_rules.clone(), applied_rules.clone(), rules.clone()].concat();
-                                lang.edges.insert((*state, *dest_lang, res_rules.clone()));
-                                to_simulate.push((*state, *dest_lang, res_rules));
+                            for ((state, dest_lang), rules_set) in &dest_language.edges {
+                                let res_rules_set: HashSet<Rules> = ParseRound::prepend_rules_to_rules_set(new_rules, &ParseRound::concatenate_rules_sets(&applied_rules_set, rules_set));
+                                lang.edges.entry((*state, *dest_lang)).or_default().extend(res_rules_set.clone());
+                                to_simulate.push(((*state, *dest_lang), res_rules_set));
                             }
                         }
                     } else if end_state_accepting {
-                        let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
-                        lang.edges.insert((*end_state, dest_lang, res_rules.clone()));
-                        to_simulate.push((*end_state, dest_lang, res_rules.clone()));
+                        let res_rules_set: HashSet<Rules> = ParseRound::prepend_rules_to_rules_set(new_rules, &applied_rules_set);
+                        lang.edges.entry((*end_state, dest_lang)).or_default().extend(res_rules_set.clone());
+                        to_simulate.push(((*end_state, dest_lang), res_rules_set.clone()));
 
-                        for (state, dest_lang, rules) in &dest_language.edges {
-                            let rules: Rules = [res_rules.clone(), rules.clone()].concat();
-                            lang.edges.insert((*state, *dest_lang, rules.clone()));
-                            to_simulate.push((*state, *dest_lang, rules));
+                        for ((state, dest_lang), rules_set) in &dest_language.edges {
+                            let new_res_rules: HashSet<Rules> = ParseRound::concatenate_rules_sets(&res_rules_set, rules_set);
+                            lang.edges.entry((*state, *dest_lang)).or_default().extend(new_res_rules.clone());
+                            to_simulate.push(((*state, *dest_lang), new_res_rules));
                         }
                     }
                 }
@@ -166,41 +204,36 @@ impl ParseRound {
     }
 
     pub fn e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
-        let mut to_simulate: Vec<(State, LangIdent, Rules)> = lang.edges.clone().into_iter().collect();
+        let mut to_simulate: Vec<((State, LangIdent), HashSet<Rules>)> = lang.edges.clone().into_iter().collect();
 
-        while let Some((source_state, dest_lang, applied_rules)) = to_simulate.pop() {
+        while let Some(((source_state, dest_lang), applied_rules_set)) = to_simulate.pop() {
             if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
                 for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(dest_lang).unwrap();
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, dest_lang, rules) in &dest_language.edges {
-                                let res_rules: Rules = [new_rules.clone(), applied_rules.clone(), rules.clone()].concat();
-                                lang.edges.insert((*state, *dest_lang, res_rules.clone()));
-                                to_simulate.push((*state, *dest_lang, res_rules));
+                            for ((state, dest_lang), rules_set) in &dest_language.edges {
+                                let res_rules_set: HashSet<Rules> = ParseRound::concatenate_rules_sets(&ParseRound::prepend_rules_to_rules_set(new_rules, &applied_rules_set), rules_set);
+                                lang.edges.entry((*state, *dest_lang)).or_default().extend(res_rules_set.clone());
+                                to_simulate.push(((*state, *dest_lang), res_rules_set));
                             }
                         }
                         if dest_language.fin {
                             lang.fin = true;
-                            let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
-                            if res_rules.len() > 0 {
-                                lang.completed_parses.insert(res_rules);
-                            }
+                            lang.completed_parses.extend(ParseRound::prepend_rules_to_rules_set(new_rules, &applied_rules_set));
                         }
                     } else if end_state_accepting {
-                        let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
-                        if !res_rules.is_empty() {
-                            lang.completed_parses.insert(res_rules.clone());
-                        }
-                        lang.edges.insert((*end_state, dest_lang, res_rules.clone()));
-                        to_simulate.push((*end_state, dest_lang, res_rules.clone()));
+                        let res_rules_set: HashSet<Rules> = ParseRound::prepend_rules_to_rules_set(new_rules, &applied_rules_set);
+                        lang.completed_parses.extend(res_rules_set.clone());
+                        lang.edges.entry((*end_state, dest_lang)).or_default().extend(res_rules_set.clone());
+                        to_simulate.push(((*end_state, dest_lang), res_rules_set.clone()));
                         if dest_language.fin {
                             lang.fin = true;
                         }
-                        for (state, dest_lang, rules) in &dest_language.edges {
-                            let rules: Rules = [res_rules.clone(), rules.clone()].concat();
-                            lang.edges.insert((*state, *dest_lang, rules.clone()));
-                            to_simulate.push((*state, *dest_lang, rules));
+                        for ((state, dest_lang), rules_set) in &dest_language.edges {
+                            let new_res_rules_set: HashSet<Rules> = ParseRound::concatenate_rules_sets(&res_rules_set, rules_set);
+                            lang.edges.entry((*state, *dest_lang)).or_default().extend(new_res_rules_set.clone());
+                            to_simulate.push(((*state, *dest_lang), new_res_rules_set));
                         }
                     }
                 }
@@ -209,42 +242,36 @@ impl ParseRound {
     }
 
     pub fn derivative(&mut self, curr_lang: &Language, language_list: &LanguageList, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> (Edges, CompletedParses, bool) {
-        let mut edges: Edges = HashSet::new();
+        let mut edges: Edges = HashMap::new();
         let mut completed_parses: CompletedParses = HashSet::new();
         let mut fin: bool = false;
 
-        for (start_state, dest_lang, applied_rules) in &curr_lang.edges {
+        for ((start_state, dest_lang), applied_rules_set) in &curr_lang.edges {
             if let Some(destinations) = finite_state_automaton.simulate(start_state, symbol) {
                 for (end_state, new_rules, end_state_accepting) in destinations {
                     let dest_language: &Language = language_list.get(*dest_lang).unwrap();
-                    let res_rules: Rules = [new_rules.clone(), applied_rules.clone()].concat();
+                    let res_rules_set: HashSet<Rules> = ParseRound::prepend_rules_to_rules_set(new_rules, &applied_rules_set);
                     if !finite_state_automaton.has_transition(end_state) {
                         if end_state_accepting {
-                            for (state, lang, rules) in &dest_language.edges {
-                                edges.insert((*state, *lang, [res_rules.clone(), rules.clone()].concat()));
+                            for ((state, lang), rules_set) in &dest_language.edges {
+                                edges.entry((*state, *lang)).or_default().extend(ParseRound::concatenate_rules_sets(&res_rules_set, rules_set));
                             }
                         }
                         if dest_language.fin {
                             fin = true;
-                            if res_rules.len() > 0 {
-                                println!("Writing completed parses");
-                                completed_parses.insert(res_rules);
-                            }
+                            completed_parses.extend(res_rules_set);
                         }
                     } else if end_state_accepting {
-                        if res_rules.len() > 0 {
-                            println!("Writing completed parses");
-                            completed_parses.insert(res_rules.clone());
-                        }
-                        edges.insert((*end_state, *dest_lang, res_rules.clone()));
+                        completed_parses.extend(res_rules_set.clone());
+                        edges.entry((*end_state, *dest_lang)).or_default().extend(res_rules_set.clone());
                         if dest_language.fin {
                             fin = true;
                         }
-                        for (state, lang, rules) in &dest_language.edges {
-                            edges.insert((*state, *lang, [res_rules.clone(), rules.clone()].concat()));
+                        for ((state, lang), rules_set) in &dest_language.edges {
+                            edges.entry((*state, *lang)).or_default().extend(ParseRound::concatenate_rules_sets(&res_rules_set, rules_set));
                         }
                     } else {
-                        edges.insert((*end_state, *dest_lang, res_rules));
+                        edges.entry((*end_state, *dest_lang)).or_default().extend(res_rules_set);
                     }
                 }
             }
@@ -274,7 +301,7 @@ impl ParseRound {
                     lang.fin = true;
                 }
             } else {
-                let mut res_lang = Language::new(curr_lang.id + 1, edges, completed_parses, fin);
+                let res_lang = Language::new(curr_lang.id + 1, edges, completed_parses, fin);
                 self.prep_deriv_language = Some(res_lang);
             }
             true
@@ -283,34 +310,38 @@ impl ParseRound {
         }
     }
 
-    pub fn prepend(&mut self, atomic: (&State, &HashSet<Rules>, bool)) {
+    pub fn prepend(&mut self, atomic: (&State, &HashSet<Rules>, bool), finite_state_automaton: &FiniteStateAutomaton) {
         if let Some(prep_deriv_language) = &self.prep_deriv_language {
-            let mut edges: Edges = HashSet::new();
+            let mut edges: Edges = HashMap::new();
             let mut fin: bool = false;
             let mut completed_parses: CompletedParses = HashSet::new();
 
-            if !atomic.1.is_empty() {
-                if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
-                    for rules in atomic.1 {
-                        edges.insert((*atomic.0, 0, rules.clone()));
+            if finite_state_automaton.has_transition(atomic.0) {
+                if !atomic.1.is_empty() {
+                    if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
+                        for rules in atomic.1 {
+                            edges.entry((*atomic.0, 0)).or_default().insert(rules.clone());
+                        }
+                    } else {
+                        for rules in atomic.1 {
+                            edges.entry((*atomic.0, prep_deriv_language.id)).or_default().insert(rules.clone());
+                            self.keep_prep_deriv = true;
+                        }
                     }
                 } else {
-                    for rules in atomic.1 {
-                        edges.insert((*atomic.0, prep_deriv_language.id, rules.clone()));
+                    if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
+                        edges.entry((*atomic.0, 0)).or_default();
+                    } else {
+                        edges.entry((*atomic.0, prep_deriv_language.id)).or_default();
+                        self.keep_prep_deriv = true;
                     }
-                }
-            } else {
-                if prep_deriv_language.edges.is_empty() && prep_deriv_language.fin {
-                    edges.insert((*atomic.0, 0, Vec::new()));
-                } else {
-                    edges.insert((*atomic.0, prep_deriv_language.id, Vec::new()));
                 }
             }
 
             if atomic.2 {
                 for rules in atomic.1 {
-                    for (state, lang, applied_rules) in prep_deriv_language.edges.clone() {
-                        edges.insert((state, lang, [rules.clone(), applied_rules.clone()].concat()));
+                    for ((state, lang), applied_rules_set) in prep_deriv_language.edges.clone() {
+                        edges.entry((state, lang)).or_default().extend(ParseRound::prepend_rules_to_rules_set(rules, &applied_rules_set));
                     }
                     for parse in &prep_deriv_language.completed_parses {
                         completed_parses.insert([rules.clone(), parse.clone()].concat());
@@ -323,7 +354,11 @@ impl ParseRound {
                 }
             }
 
-            self.prep_language = Some(Language::new(prep_deriv_language.id + 1, edges, completed_parses, fin));
+            if self.keep_prep_deriv {
+                self.prep_language = Some(Language::new(prep_deriv_language.id + 1, edges, completed_parses, fin));
+            } else {
+                self.prep_language = Some(Language::new(prep_deriv_language.id, edges, completed_parses, fin));
+            }
         }
     }
 
@@ -347,7 +382,7 @@ pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool 
     let mut language_list: LanguageList = LanguageList::new();
 
     let (start_state, start_accepting) = finite_state_automaton.get_start();
-    language_list.insert_new_language(Language::new(language_list.highest_id+1, HashSet::from([(start_state, 0, Vec::new())]), HashSet::new(), start_accepting));
+    language_list.insert_new_language(Language::new(language_list.highest_id+1, HashMap::from([((start_state, 0), HashSet::new())]), HashSet::new(), start_accepting));
 
     for token in token_string {
         println!("Next token: {}", token);
@@ -359,7 +394,7 @@ pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool 
             if let Some(atomic) = finite_state_automaton.get_atomic(Symbol::Nonterminal(*nonterminal), token) {
                 println!("Found atomic: [{}]^({})", nonterminal, token);
                 if curr.prep_derive(&language_list, *nonterminal, finite_state_automaton) {
-                    curr.prepend(atomic);
+                    curr.prepend(atomic, finite_state_automaton);
                 }
             }
         }
@@ -391,410 +426,7 @@ pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool 
         }
         
     }
-//
+
     println!("{}", language_list);
-//    let final_lang = calculate_final_language(lang, &language_list, finite_state_automaton);
-//    println!("Final: {}", final_lang);
     epsilon(language_list)
 }
-
-//fn edges_with_simulated_epsilon(language: &Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) -> BTreeSet<(State, LangIdent, Option<Rules>)> {
-//    let mut res: BTreeSet<(State, LangIdent, Option<Rules>)> = BTreeSet::new();
-//
-//    let mut to_process: Vec<(State, LangIdent, Option<Rules>)> = language.edges.clone().into_iter().collect();
-//    //println!("To_process: {:?}", to_process);
-//    while let Some((source_state, dest_lang, opt_applied_rules)) = to_process.pop() {
-//        if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
-//            for (dest_state, opt_rules, accepting_state) in destinations {
-//                to_process.push((*dest_state, dest_lang, concatenate_opt_rules(opt_rules, &opt_applied_rules)));
-//                if accepting_state {
-//                    let dest_lang = language_list.get(dest_lang).unwrap();
-//                    for (source_state, target_lang, oldest_rules) in &dest_lang.edges {
-//                        to_process.push((*source_state, *target_lang, 
-//                            concatenate_opt_rules(oldest_rules, opt_rules)
-//                        ));
-//                    }
-//                }
-//            }
-//        }
-//        if finite_state_automaton.has_transition(&source_state) {
-//            res.insert((source_state, dest_lang, opt_applied_rules));
-//        }
-//    }
-//    //println!("Res: {:?}", res);
-//    println!("Simulated: {:?}", res);
-//    res
-//}
-//
-//fn calculate_final_language(curr_lang: LangIdent, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) -> Language {
-//    let language = language_list.get(curr_lang).unwrap();
-//    let mut edges: BTreeSet<(State, LangIdent, Option<Rules>)> = BTreeSet::new();
-//    let fin: bool = true;
-//    let mut accepting: bool = language.accepting;
-//
-//    println!();
-//    println!("calculating final");
-//    let mut to_process: Vec<(State, LangIdent, Option<Rules>)> = language.edges.clone().into_iter().collect();
-//    while let Some((source_state, dest_lang, opt_applied_rules)) = to_process.pop() {
-//        if language_list.get(dest_lang).unwrap().accepting {
-//            accepting = true;
-//        }
-//        println!("Currently processing: ({},{})", source_state, dest_lang);
-//        if finite_state_automaton.is_accepting(&source_state) {
-//            for (dest_state, dest_lang, opt_rules) in &language_list.get(dest_lang).unwrap().edges {
-//                to_process.push((*dest_state, *dest_lang, opt_rules.clone()));
-//                    //concatenate_opt_rules(opt_rules, &opt_applied_rules)));
-//            }
-//        }
-//        if let Some(destinations) = finite_state_automaton.simulate(&source_state, Symbol::Epsilon) {
-//            for (dest_state, opt_rules, accepting_state) in destinations {
-//                to_process.push((*dest_state, dest_lang, concatenate_opt_rules(opt_rules, &opt_applied_rules)));
-//                //if accepting_state {
-//                //    let dest_lang = language_list.get(dest_lang).unwrap();
-//                //    if dest_lang.accepting {
-//                //        accepting = true;
-//                //    }
-//                //    for (source_state, target_lang, opt_rules) in &dest_lang.edges {
-//                //        to_process.push((*source_state, *target_lang, 
-//                //            concatenate_opt_rules(opt_rules, &opt_applied_rules)
-//                //        ));
-//                //    }
-//                //}
-//            }
-//        }
-//        if finite_state_automaton.is_accepting(&source_state) && dest_lang == 0 {
-//            edges.insert((source_state, dest_lang, opt_applied_rules.clone()));
-//        }
-//    }
-//
-//    Language::new(0, Some(edges), fin, accepting)
-//}
-//
-//fn derivative(curr_lang: LangIdent, language_list: &mut LanguageList, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> (BTreeSet<(State, LangIdent, Option<Rules>)>, bool, bool) {
-//    //println!("Symb: {}", symbol);
-//    let language = language_list.get(curr_lang).unwrap();
-//    let mut new_edges: BTreeSet<(State, LangIdent, Option<Rules>)> = BTreeSet::new();
-//    let mut fin: bool = true;
-//    let mut accepting: bool = false;
-//
-//    //for (source_state, dest_lang, opt_applied_rules )in &language.edges {
-//    for (source_state, dest_lang, opt_applied_rules) in edges_with_simulated_epsilon(language, language_list, finite_state_automaton) {
-//        if let Some(destinations) = finite_state_automaton.simulate(&source_state, symbol) {
-//            for (dest_state, opt_rules, accepting_state) in destinations {
-//                if finite_state_automaton.has_transition(dest_state) {
-//                    fin = false;
-//                }
-//                if !accepting_state || accepting_state && language_list.get(dest_lang).unwrap().fin {
-//                    new_edges.insert((*dest_state, dest_lang, concatenate_opt_rules(opt_rules, &opt_applied_rules)));
-//                }
-//                if accepting_state {
-//                    let dest_lang = language_list.get(dest_lang).unwrap();
-//                    for (source_state, target_lang, oldest_rules) in &dest_lang.edges {
-//                        if finite_state_automaton.has_transition(source_state) {
-//                            new_edges.insert((*source_state, *target_lang, 
-//                                concatenate_opt_rules(opt_rules, oldest_rules)
-//                            ));
-//                        }
-//                    }
-//                    //new_edges.extend(dest_lang.edges.clone());
-//                    if dest_lang.accepting {
-//                        accepting = true;
-//                    }
-//                }
-//            }
-//        }
-//    }
-//
-//    (new_edges, fin, accepting)
-//
-//    //if !new_edges.is_empty() {
-//    //    Some(language_list.get_lang_ident_or_insert(new_edges, fin, accepting))
-//    //} else {
-//    //    None
-//    //}
-//}
-//
-//fn prepend(deriv_edges: &BTreeSet<(State, LangIdent, Option<Rules>)>, deriv_fin: bool, deriv_accepting: bool, base_deriv_edges: &BTreeSet<(State, LangIdent, Option<Rules>)>, deriv_id: LangIdent, language_list: &mut LanguageList, atomic: (&usize, &Option<HashSet<Rules>>, bool), finite_state_automaton: &FiniteStateAutomaton) -> (BTreeSet<(State, LangIdent, Option<Rules>)>, bool, bool) {
-//    let (dest_state, opt_rules_list, accepting) = atomic;
-//    let mut new_edges: BTreeSet<(State, LangIdent, Option<Rules>)> = BTreeSet::new();
-//    let mut fin: bool = false;
-//    let mut new_accepting: bool = false;
-//
-//    println!("Base: {:?}", base_deriv_edges);
-//
-//    if accepting && deriv_accepting {
-//        for (source_state, target_lang, opt_rules) in deriv_edges {
-//            if finite_state_automaton.has_transition(dest_state) {
-//                if let Some(rules_list) = opt_rules_list {
-//                    for rules in rules_list {
-//                        new_edges.insert((*dest_state, *target_lang, 
-//                            opt_rules.as_ref().map_or_else(|| Some(rules.clone()), |applied_rules| Some([rules.clone(), applied_rules.clone()].concat()))
-//                        ));
-//                    }
-//                } else {
-//                    new_edges.insert((*dest_state, *target_lang, 
-//                        opt_rules.as_ref().map(|applied_rules| applied_rules.clone())
-//                    ));
-//                }
-//            }
-//        }
-//    }
-//    for (source_state, target_lang, opt_rules) in deriv_edges {
-//        if let Some(rules_list) = opt_rules_list {
-//            if finite_state_automaton.has_transition(dest_state) {
-//                for rules in rules_list {
-//                    if deriv_fin {
-//                        new_edges.insert((*dest_state, *target_lang, 
-//                            opt_rules.as_ref().map_or_else(|| Some(rules.clone()), |applied_rules| Some([rules.clone(), applied_rules.clone()].concat()))
-//                        ));
-//                    } else {
-//                        new_edges.insert((*dest_state, deriv_id, 
-//                            opt_rules.as_ref().map_or_else(|| Some(rules.clone()), |applied_rules| Some([rules.clone(), applied_rules.clone()].concat()))
-//                        ));
-//                    }
-//                }
-//            }
-//        } else {
-//            if finite_state_automaton.has_transition(dest_state) {
-//                if deriv_fin {
-//                    new_edges.insert((*dest_state, *target_lang, 
-//                        opt_rules.as_ref().map(|applied_rules| applied_rules.clone())
-//                    ));
-//                } else {
-//                    new_edges.insert((*dest_state, deriv_id, 
-//                        opt_rules.as_ref().map(|applied_rules| applied_rules.clone())
-//                    ));
-//                }
-//            }
-//        }
-//    }
-//
-//    //if finite_state_automaton.has_transition(dest_state) {
-//    //    if let Some(rules_list) = opt_rules_list {
-//    //        for rules in rules_list {
-//    //            new_edges.insert((*dest_state, deriv_id, Some(rules.clone())));
-//    //        }
-//    //    } else {
-//    //        new_edges.insert((*dest_state, deriv_id, None));
-//    //    }
-//    //}
-//
-//    if accepting {
-//        if deriv_accepting {
-//            new_accepting = true;
-//        }
-//    }
-//
-//    (new_edges, fin, new_accepting)
-//}
-//
-//pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool {
-//    let finite_state_automaton: &FiniteStateAutomaton = &grammar.finite_state_automaton;
-//    let mut language_list: LanguageList = LanguageList::new();
-//
-//    let (start_state, start_accepting) = finite_state_automaton.get_start();
-//    let mut lang: LangIdent = language_list.insert_new_language(BTreeSet::from([(start_state, 0, None)]), false, start_accepting);
-//
-//    for token in token_string {
-//        println!("lang: {}", language_list.get(lang).unwrap());
-//        println!("Next token: {}", token);
-//
-//        let (base_deriv_edges, mut deriv_fin, mut deriv_accepting) = derivative(lang, &mut language_list, Symbol::Terminal(token), &finite_state_automaton);
-//        let mut prepend_edges: BTreeSet<(State, LangIdent, Option<Rules>)> = BTreeSet::new();
-//        let mut prepend_fin: bool = true;
-//        let mut prepend_accepting: bool = false;
-//
-//        let mut deriv_edges: Edges = BTreeSet::new();
-//        for nonterminal in &grammar.nonterminals {
-//            if let Some(atomic) = finite_state_automaton.get_atomic(Symbol::Nonterminal(*nonterminal), token) {
-//                println!("Found atomic: [{}]^({})", nonterminal, token);
-//                let (new_edges, new_fin, new_accepting) = derivative(lang, &mut language_list, Symbol::Nonterminal(*nonterminal), &finite_state_automaton);
-//                println!("Deriv: {:?}", new_edges);
-//
-//                if !new_edges.is_empty() {
-//                    let (new_prepend_edges, new_prepend_fin, new_prepend_accepting) = prepend(&new_edges, new_fin, new_accepting, &base_deriv_edges, language_list.get_next_id(), &mut language_list, atomic, finite_state_automaton);
-//                    println!("Prep: {:?}", new_prepend_edges);
-//                    if !new_prepend_edges.is_empty() {
-//                        deriv_edges.extend(new_edges);
-//                        if !new_fin {
-//                            deriv_fin = false;
-//                        }
-//                        if new_accepting {
-//                            deriv_accepting = true;
-//                        }
-//                        prepend_edges.extend(new_prepend_edges);
-//                        if !new_prepend_fin {
-//                            prepend_fin = false;
-//                        }
-//                        if new_prepend_accepting {
-//                            prepend_accepting = true;
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//        deriv_edges.extend(base_deriv_edges);
-//        println!("new deriv edges: {:?}", deriv_edges);
-//        println!("new prepend edges: {:?}", prepend_edges);
-//
-//        if !deriv_edges.is_empty() {
-//            lang = language_list.insert_new_language(deriv_edges, deriv_fin, deriv_accepting);
-//        }
-//        if !prepend_edges.is_empty() {
-//            lang = language_list.insert_new_language(prepend_edges, prepend_fin, prepend_accepting);
-//        }
-//        
-//    }
-//
-//    println!("{}", language_list);
-//    let final_lang = calculate_final_language(lang, &language_list, finite_state_automaton);
-//    println!("Final: {}", final_lang);
-//    epsilon(final_lang)
-//}
-
-//type Configuration = (VecDeque<(State, bool)>, Rules);
-//type Language = HashSet<Configuration>;
-//
-//pub fn print_language(language: &Language) {
-//    println!("lang:");
-//    for (configuration, applied_rules) in language {
-//        print!("    [");
-//        for (state, accepting) in configuration {
-//            print!("({}, {})  ", state, accepting);
-//        }
-//        for (nonterminal, rule) in applied_rules {
-//            print!("({} -> ", nonterminal);
-//            for symbol in rule {
-//                print!("{}", symbol);
-//            }
-//            print!(")");
-//        }
-//        println!("]");
-//    }
-//}
-//
-//pub fn prepend(finite_state_automaton: &FiniteStateAutomaton, symbol: Symbol, token: Terminal, language: &Language) -> Language {
-//    let mut res: Language = HashSet::new();
-//    if let Some((atomic, opt_rule_set, accepting)) = finite_state_automaton.get_atomic(symbol, token) {
-//        match (finite_state_automaton.has_transition(atomic), opt_rule_set) {
-//            (true, None) => {
-//                for (curr_conf, applied_rules) in language {
-//                    let mut new_conf = curr_conf.clone();
-//                    new_conf.push_front((*atomic, accepting));
-//                    res.insert((new_conf, applied_rules.clone()));
-//                    //res.extend(derivative(&(new_conf, applied_rules), Symbol::Epsilon, finite_state_automaton));
-//                    res.extend(one_state_derivative(curr_conf, applied_rules, *atomic, Symbol::Epsilon, finite_state_automaton));
-//                }
-//            },
-//            (false, Some(rule_set)) => {
-//                for (curr_conf, applied_rules) in language {
-//                    for rules in rule_set {
-//                        res.insert((curr_conf.clone(), [rules.clone(), applied_rules.clone()].concat()));
-//                    }
-//                }
-//            },
-//            (true, Some(rule_set)) => {
-//                for (curr_conf, applied_rules) in language {
-//                    for rules in rule_set {
-//                        let mut new_conf = curr_conf.clone();
-//                        new_conf.push_front((*atomic, accepting));
-//                        res.insert((new_conf, [rules.clone(), applied_rules.clone()].concat()));
-//                    }
-//                }
-//            },
-//            _ => res = language.clone(),
-//        }
-//    }
-//    res
-//}
-//
-//pub fn one_state_derivative(curr_configuration: &VecDeque<(State, bool)>, rules: &Rules, curr_state: State, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> Language {
-//    let mut res: Language = HashSet::new();
-//
-//    if let Some(destinations) = finite_state_automaton.simulate(&curr_state, symbol) {
-//        for (dest, opt_rules, accepting) in destinations {
-//            let mut new_configuration = curr_configuration.clone();
-//            if finite_state_automaton.has_transition(dest) {
-//                new_configuration.push_front((*dest, accepting));
-//            }
-//            if let Some(new_rules) = opt_rules {
-//                let mut applied_rules = new_rules.clone();
-//                applied_rules.extend(rules.clone());
-//                //res.extend(one_state_derivative(curr_configuration, &applied_rules, *dest, Symbol::Epsilon, finite_state_automaton));
-//                res.insert((new_configuration.into(), applied_rules));
-//            } else {
-//                //res.extend(one_state_derivative(curr_configuration, rules, *dest, Symbol::Epsilon, finite_state_automaton));
-//                res.insert((new_configuration.into(), rules.clone()));
-//            }
-//        }
-//    }
-//
-//    res
-//}
-//
-//pub fn derive_e(language: &Language, finite_state_automaton: &FiniteStateAutomaton) -> Language {
-//    let mut res: Language = language.clone();
-//    let mut new_res = derivative(language, Symbol::Epsilon, finite_state_automaton);
-//    while !new_res.is_empty() {
-//        res.extend(new_res.clone());
-//        new_res = derivative(&new_res, Symbol::Epsilon, finite_state_automaton);
-//    }
-//    res
-//}
-//
-//pub fn derivative(language: &Language, symbol: Symbol, finite_state_automaton: &FiniteStateAutomaton) -> Language {
-//    let mut res: Language = HashSet::new();
-//    for (curr_conf, rules) in language {
-//        let mut curr_configuration: VecDeque<(State, bool)> = curr_conf.clone().into();
-//
-//        while let Some((state, accepting)) = curr_configuration.pop_front() {
-//            res.extend(one_state_derivative(&curr_configuration, rules, state, symbol, finite_state_automaton));
-//            if !accepting {
-//                break;
-//            }
-//        }
-//    }
-//
-//    res
-//}
-//
-//pub fn epsilon(language: &Language, finite_state_automaton: &FiniteStateAutomaton) -> bool {
-//    'lang: for (configuration, _) in language {
-//        for (_, accepting) in configuration {
-//            if !accepting {
-//                continue 'lang;
-//            }
-//        }
-//        return true;
-//    }
-//    false
-//}
-//
-//
-//
-//pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar) -> bool {
-//    let finite_state_automaton: &FiniteStateAutomaton = &grammar.finite_state_automaton;
-//    let symbols: &HashSet<Symbol> = &grammar.symbols;
-//    let mut lang: Language = HashSet::from([(VecDeque::from([finite_state_automaton.get_start()]), Vec::new())]);
-//    for token in token_string {
-//        print_language(&lang);
-//        //println!("lang: {:?}", lang);
-//        let mut new_lang: Language = HashSet::new();
-//        for symbol in symbols {
-//            new_lang.extend(prepend(finite_state_automaton, *symbol, token, &derivative(&derive_e(&lang, finite_state_automaton), *symbol, finite_state_automaton)))
-//            //if let Some((atomic, opt_rule_set, accepting)) = finite_state_automaton.get_atomic(*symbol, token) {
-//            //    if finite_state_automaton.has_transition(atomic) {
-//            //        new_lang.extend(prepend(Some((*atomic, accepting)), opt_rule_set, &derivative(&lang, *symbol, &finite_state_automaton)));
-//            //    } else {
-//            //        new_lang.extend(prepend(None, opt_rule_set, &derivative(&lang, *symbol, &finite_state_automaton)));
-//            //    }
-//            //}
-//        }
-//        lang = new_lang;
-//    }
-//    lang = derive_e(&lang, finite_state_automaton);
-//    print_language(&lang);
-//    //println!("lang: {:?}", lang);
-//    epsilon(&lang, finite_state_automaton)
-//}
-
