@@ -350,6 +350,7 @@ impl ParseRound {
                 if prep_deriv_language.fin {
                     fin = true;
                     completed_parses.extend(prep_deriv_language.completed_parses.clone());
+                    completed_parses.extend(atomic.1.clone());
                     edges.extend(prep_deriv_language.edges.clone());
                 }
             }
