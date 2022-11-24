@@ -409,6 +409,14 @@ impl RegexNode {
 
 pub type Rule = (Nonterminal, Word);
 pub type Rules = Vec<Rule>;
+pub type RulesSet = HashSet<Rules>;
+
+pub fn print_rules_set(rules_set: &RulesSet, f: &mut fmt::Formatter) -> fmt::Result {
+    for rules in rules_set {
+        print_rules(rules, f)?;
+    }
+    Ok(())
+}
 
 pub fn print_rules(rules: &Rules, f: &mut fmt::Formatter) -> fmt::Result {
     for rule in rules {

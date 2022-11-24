@@ -38,7 +38,7 @@ pub fn extra_e_rule_relational_parsing_example_grammar() -> Grammar {
         vec![Symbol::Terminal('a')],
         vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
         vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
-        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c'), Symbol::Terminal('c')],
+        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
         vec![Symbol::Epsilon]
     ]));
     Grammar::new(terminals, nonterminals, start, rules)
@@ -83,6 +83,18 @@ pub fn odd_number_of_a_grammar() -> Grammar {
     rules.insert('S', HashSet::from([
         vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')],
         vec![Symbol::Terminal('a')]
+    ]));
+    Grammar::new(terminals, nonterminals, start, rules)
+}
+
+pub fn even_a_middle_b_grammar() -> Grammar {
+    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
+    let start: Nonterminal = 'S';
+    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+    rules.insert('S', HashSet::from([
+        vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')],
+        vec![Symbol::Terminal('b')]
     ]));
     Grammar::new(terminals, nonterminals, start, rules)
 }
@@ -160,5 +172,17 @@ pub fn indirect_right_recursive_grammar() -> Grammar {
         vec![Symbol::Terminal('b'), Symbol::Nonterminal('A')],
         vec![Symbol::Terminal('b')],
     ]));
-    Grammar::new(terminals, nonterminals, start, rules) 
+    Grammar::new(terminals, nonterminals, start, rules)
+}
+
+pub fn test_grammar() -> Grammar {
+    let terminals: HashSet<Terminal> = HashSet::from(['a']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['A']);
+    let start: Nonterminal = 'A';
+    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+    rules.insert('A', HashSet::from([
+        vec![Symbol::Nonterminal('A'), Symbol::Terminal('a'), Symbol::Nonterminal('A')],
+        vec![Symbol::Epsilon],
+    ]));
+    Grammar::new(terminals, nonterminals, start, rules)
 }

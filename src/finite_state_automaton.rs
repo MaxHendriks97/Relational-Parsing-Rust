@@ -3,7 +3,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::Write;
 
-use crate::word::{*, self};
+use crate::word::*;
 use crate::regex::*;
 
 pub type State = usize;
