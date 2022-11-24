@@ -369,14 +369,6 @@ impl fmt::Display for RegexNode {
 }
 
 impl RegexNode {
-    fn prepend_rule(&self, rules: &Rules) -> Vec<WordNode> {
-        let mut new_nodes: Vec<WordNode> = Vec::new();
-        for n in &self.nodes {
-            new_nodes.push(n.prepend_rule(rules));
-        }
-        new_nodes
-    }
-
     fn append_rule(&self, rules: &Rules) -> Vec<WordNode> {
         let mut new_nodes: Vec<WordNode> = Vec::new();
         for n in &self.nodes {
@@ -491,14 +483,6 @@ impl fmt::Display for WordNode {
 }
 
 impl WordNode {
-    fn prepend_rule(&self, rules: &Rules) -> WordNode {
-        let mut new_words: BTreeSet<(WordNodeWord, Rules)> = BTreeSet::new();
-        for (word, rule) in &self.words {
-            new_words.insert((word.clone(), [rule.clone(), rules.clone()].concat()));
-        }
-        WordNode {words: new_words, kleene_star: self.kleene_star}
-    }
-
     fn append_rule(&self, rules: &Rules) -> WordNode {
         let mut new_words: BTreeSet<(WordNodeWord, Rules)> = BTreeSet::new();
         for (word, rule) in &self.words {
