@@ -1,5 +1,4 @@
 use std::collections::{HashSet, BTreeSet, HashMap, BTreeMap, VecDeque};
-use std::fmt;
 
 use crate::*;
 
@@ -16,24 +15,6 @@ impl ParseRound {
     }
 
     pub fn register(mut self, language_list: &mut LanguageList, finite_state_automaton: &FiniteStateAutomaton) -> Result<Memo, ParseError> {
-        //if let Some(deriv) = &self.deriv {
-        //    println!("Got deriv: {}", deriv);
-        //} else {
-        //    println!("No deriv made");
-        //}
-
-        //if let Some(prep_deriv) = &self.prep_deriv {
-        //    println!("Got prep_deriv: {}", prep_deriv);
-        //} else {
-        //    println!("No prep_deriv_made");
-        //}
-        
-        //if let Some(prep) = &self.prep {
-        //    println!("Got prep: {}", prep);
-        //} else {
-        //    println!("No prep made");
-        //}
-
         if let (Some(prep_deriv), Some(mut prep)) = (self.prep_deriv, self.prep) {
             
             if prep_deriv.has_edges() {
@@ -279,16 +260,6 @@ fn epsilon(lang: &Language) -> bool {
     lang.is_final()
 }
 
-fn concatenate_opt_rules(first: &Option<Rules>, second: &Option<Rules>) -> Option<Rules> {
-    match (first, second) {
-        (None, None) => None,
-        (res@Some(_), None) => res.clone(),
-        (None, res@Some(_)) => res.clone(),
-        (Some(first_rules), Some(second_rules)) => Some([first_rules.clone(), second_rules.clone()].concat()),
-    }
-}
-
-
 pub fn apply_memo(memo: &Memo, mut curr_lang: Language, language_list: &mut LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
     //println!("Memoized");
 
@@ -372,7 +343,7 @@ pub fn apply_memo(memo: &Memo, mut curr_lang: Language, language_list: &mut Lang
                         edges.entry((*state, *depth + edge.1)).or_default().extend(ParseRound::concatenate_rules_sets(rules, rules_set));
                     }
                 } else {
-                    //completed_parses.extend(rules.clone());
+                    completed_parses.extend(rules.clone());
                     fin = true;
                 }
             }
