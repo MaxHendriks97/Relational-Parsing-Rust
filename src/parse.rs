@@ -1,4 +1,4 @@
-use std::collections::{HashSet, BTreeSet, HashMap, BTreeMap, VecDeque};
+use std::collections::{HashSet, HashMap};
 
 use crate::*;
 
@@ -60,7 +60,6 @@ impl ParseRound {
                     if lowest_depth > 1 {
                         lang.adjust_lowest_depth(lowest_depth);
                         for _ in 1..lowest_depth {
-                            //self.memo.increase_pop();
                             language_list.pop_lang();
                         }
                     }
@@ -256,10 +255,6 @@ impl ParseRound {
 
 }
 
-fn epsilon(lang: &Language) -> bool {
-    lang.is_final()
-}
-
 pub fn apply_memo(memo: &Memo, mut curr_lang: Language, language_list: &mut LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
     //println!("Memoized");
 
@@ -420,7 +415,7 @@ pub fn parse(token_string: Vec<Terminal>, grammar: &Grammar, memoize: &mut Memoi
 
 pub fn g_accepts_string(token_string: Vec<Terminal>, grammar: &Grammar, memoize: &mut Memoize) -> bool {
     match parse(token_string, grammar, memoize) {
-        Ok(last_lang) => {epsilon(&last_lang)},
+        Ok(last_lang) => {last_lang.is_final()},
         Err(_) => {false}
     }
 }
