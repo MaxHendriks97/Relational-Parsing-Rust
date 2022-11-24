@@ -122,14 +122,6 @@ impl MemoBuilder {
             }
         }
 
-        
-        //for (_, edges) in &mut memo {
-        //    let old_edges = std::mem::take(edges);
-        //    for (((source_state, dest_depth), accepting), rules_set) in old_edges {
-        //        edges.insert(((source_state, dest_depth - self.no_pops), accepting), rules_set);
-        //    }
-        //}
-
         let mut extra_edges: MemEdges = HashMap::new();
         for (((source_state, dest_depth), accepting), rules_set) in self.prep_edges {
             extra_edges.insert(((source_state, dest_depth - self.no_pops), accepting), rules_set);
