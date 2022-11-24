@@ -9,16 +9,6 @@ use crate::regex::*;
 pub type State = usize;
 
 #[derive(Debug)]
-enum StateErrors {
-    StartNotInStates(State),
-    AccNotInStates(State),
-    SrcNotInStates(State),
-    DestNotInStates(State),
-    AtomicStateNotInStates(State),
-}
-
-
-#[derive(Debug)]
 pub struct FiniteStateAutomaton {
     states: HashSet<State>,
     accepting_states: HashSet<State>,
@@ -85,37 +75,7 @@ impl fmt::Display for FiniteStateAutomaton {
 }
 
 impl FiniteStateAutomaton {
-    fn new(states: HashSet<State>, accepting_states: HashSet<State>, start: State, transitions: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>>, atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)>) -> Result<FiniteStateAutomaton, StateErrors> {
-        if !states.contains(&start) {
-            return Err(StateErrors::StartNotInStates(start));
-        }
-        for acc_state in &accepting_states {
-            if !states.contains(acc_state) {
-                return Err(StateErrors::AccNotInStates(*acc_state));
-            }
-        }
-        for src_state in transitions.keys() {
-            if !states.contains(src_state) {
-                return Err(StateErrors::SrcNotInStates(*src_state));
-            }
-        }
-        for transition_list in transitions.values() {
-            for (symb, destinations) in transition_list {
-                for (dest_state, _) in destinations {
-                    if !states.contains(dest_state) {
-                        return Err(StateErrors::DestNotInStates(*dest_state));
-                    }
-                }
-            }
-        }
-        for (atomic_state, _) in atomic_to_state.values() {
-            if !states.contains(atomic_state) {
-                return Err(StateErrors::AtomicStateNotInStates(*atomic_state));
-            }
-        }
-        Ok(FiniteStateAutomaton{states, accepting_states, start, transitions, atomic_to_state})
-    }
-
+    
     pub fn build_fsa(terminals: &HashSet<Terminal>, start_nt: Nonterminal, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
         let start: State = 0;
         let epsilon: State = 1;
