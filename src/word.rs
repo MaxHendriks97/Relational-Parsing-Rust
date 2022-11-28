@@ -1,3 +1,8 @@
+//! # Word
+//! 
+//! The 'word' module contains the type definitions for terminal and nonterminal symbols and further 
+//! defines a simple structure that allows us to express combinations of these symbols as words.
+
 use std::fmt;
 
 pub type Terminal = char;

@@ -1,3 +1,7 @@
+//! # Grammar
+//! 
+//! The `grammar` module defines the data structure which is used to express a context-free grammar.
+
 use std::collections::{HashSet, HashMap};
 
 use crate::word::*;

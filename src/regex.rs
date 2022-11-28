@@ -1,17 +1,30 @@
+//! # Regex
+//! 
+//! The `regex` module contains data structures and associated methods which calculate atomic languages
+//! according to the derivation rules of a provided grammar and expresses these atomic languages
+//! as regular expressions.
+
 use std::fmt;
 use std::collections::{HashSet, HashMap, BTreeSet, VecDeque};
 
 use crate::word::*;
 
+// Used as an intermediary data structure, keeping track of some additional information while we calculate atomic languages.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub enum RegexSymbol {
     Terminal(Terminal),
     Nonterminal(Nonterminal),
+
+    // Placeholder symbol for atomic languages calculated in the future. If these atomic languages will exist,
+    // they will be prepended to the rest of the rule following the atomic language symbol.
     AtomicLanguage(Nonterminal, Terminal),
+
+    // Expresses nulled symbols and its associated nulling rule
     Nulled(Rules),
     Epsilon,
 }
 
+// Calculates and stores atomic languages.
 #[derive(Debug)]
 pub struct Regex {
     pub regex: HashMap<(Nonterminal, Terminal), RegexNode>,
@@ -27,13 +40,15 @@ impl fmt::Display for Regex {
 }
 
 impl Regex {
+
+    /// Takes a set of terminals and a set of derivation rules and calculates its associated atomic languages as a regular expression.
     pub fn new(terminals: &HashSet<Terminal>, rules: &HashMap<Nonterminal, HashSet<Word>>) -> Regex {
         let mut atomic_regex_rules: HashMap<(Nonterminal, Terminal), (HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>)> = HashMap::new();
         let mut queue: VecDeque<(Nonterminal, Terminal)> = VecDeque::new();
 
         for (nonterminal, rule_list) in rules {
             for terminal in terminals {
-                let regex_rules = Regex::calculate_regex_rules(nonterminal, terminal, rules, rule_list);
+                let regex_rules = Regex::calculate_regex_rules(nonterminal, terminal, rule_list, rules);
                 atomic_regex_rules.insert((*nonterminal, *terminal), regex_rules);
                 queue.push_back((*nonterminal, *terminal));
             }
@@ -42,17 +57,25 @@ impl Regex {
         Regex {regex: Regex::build_regex_map(queue, atomic_regex_rules)}
     }
 
-    fn calculate_regex_rules(nonterminal: &Nonterminal, terminal: &Terminal, rules: &HashMap<Nonterminal, HashSet<Word>>, rule_list: &HashSet<Vec<Symbol>>) -> (HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>) {
+    // For a given nonterminal, its associated derivation rules and a terminal, sorts derivation rules in three separate sets according what properties they hold.
+    // direct: The set of rules on which we can directly perform a derivative by any terminal.
+    // recursive: The set of rules which start with the calling nonterminal, i.e. the rules which are directly left-recursive.
+    // different_atomic: The set of rules which start with a different nonterminal.
+    // calculate_regex_rules also adds new rules for any nonterminal which can be nulled.
+    // Ex: suppose we have a grammar with rules of the form
+    // S -> aSa
+    // S -> Sa
+    // S -> epsilon
+    // then S -> aSa and S -> epsilon are sorted into direct, S -> Sa into recursive.
+    // Additionally, the rules S -> aa and S -> a are created by nulling S in the first two rules and both are sorted into direct.
+    fn calculate_regex_rules(nonterminal: &Nonterminal, terminal: &Terminal, rule_list: &HashSet<Vec<Symbol>>, rules: &HashMap<Nonterminal, HashSet<Word>>) -> (HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>) {
         let mut direct: HashSet<(Vec<RegexSymbol>, Rules)> = HashSet::new();
         let mut recursive: HashSet<(Vec<RegexSymbol>, Rules)> = HashSet::new();
         let mut different_atomic: HashSet<(Vec<RegexSymbol>, Rules)> = HashSet::new();
         let mut nullable_atomic: bool = false;
 
         for rule in rule_list {
-            if rule[0] == Symbol::Epsilon {
-                nullable_atomic = true;
-            }
-            let regex_rule = Regex::rule_to_regex_rule(rule, *terminal);
+            let regex_rule = Regex::word_to_regex_word(rule, *terminal);
             if regex_rule.len() > 0 {
                 match regex_rule[0] {
                     RegexSymbol::AtomicLanguage(nt, _) => {
@@ -62,6 +85,10 @@ impl Regex {
                             different_atomic.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
                         }
                     },
+                    RegexSymbol::Epsilon => {
+                        nullable_atomic = true;
+                        direct.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
+                    }
                     _ => {
                         direct.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
                     },
@@ -107,6 +134,7 @@ impl Regex {
         (direct, recursive, different_atomic)
     }
     
+    // From an input, produces a new output with any Nulled symbols removed.
     fn reg_symb_vec_without_nulled(input: &(Vec<RegexSymbol>, Rules)) -> (Vec<RegexSymbol>, Rules) {
         let mut res: (Vec<RegexSymbol>, Rules) = (Vec::with_capacity(input.0.len()), input.1.clone());
         for regsymb in &input.0 {
@@ -123,6 +151,7 @@ impl Regex {
         res
     }
 
+    // From an input starting with Nulled symbols, adds the associated rules until a non-nulled symbol is encountered.
     fn collect_starting_null_rules(input: &(Vec<RegexSymbol>, Rules)) -> Rules {
         let mut res: Rules = Vec::new();
         let mut i: usize = 0;
@@ -133,6 +162,7 @@ impl Regex {
         res
     }
 
+    // From the three lists, direct, recursive and different_atomic, calculates the atomic languages.
     fn build_regex_map(mut queue: VecDeque<(Nonterminal, Terminal)>, atomic_regex_rules: HashMap<(Nonterminal, Terminal), (HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>)>) -> HashMap<(Nonterminal, Terminal), RegexNode> {
         let mut atomic_regex_rules_working_copy: HashMap<(Nonterminal, Terminal), (HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>, HashSet<(Vec<RegexSymbol>, Rules)>)> = atomic_regex_rules.clone();
         let mut res: HashMap<(Nonterminal, Terminal), RegexNode> = HashMap::new();
@@ -197,6 +227,12 @@ impl Regex {
         res
     }
 
+    // Produces all possible combinations of nulled rules.
+    // Ex. consider the following grammar:
+    // S -> SaSbS
+    // S -> epsilon
+    // the set of new rules will be:
+    // S -> SaSb, S -> SabS, S -> aSbS, S -> Sab, S -> aSb, S -> abS, S -> ab
     fn null_rules(rules: &HashMap<Nonterminal, HashSet<Word>>, rule_list: &HashSet<(Vec<RegexSymbol>, Rules)>, nullable_atomic: bool, new_rules: &mut HashSet<(Vec<RegexSymbol>, Rules)>) {
         for rule in rule_list {
             let mut nullable_positions: Vec<(usize, Rules)> = Vec::new();
@@ -239,6 +275,7 @@ impl Regex {
         }).collect()
     }
 
+    // Determines if a nonterminal has an epsilon rule.
     fn nullable_nonterminal(rules: &HashMap<Nonterminal, HashSet<Word>>, nonterminal: &Nonterminal) -> bool {
         if let Some(rule_list) = rules.get(nonterminal) {
             for rule in rule_list {
@@ -250,6 +287,7 @@ impl Regex {
         false
     }
 
+    // From the two sets direct, recursive and a new different_recursive set, calculates the associated regular expression.
     fn build_regex_node(direct: &HashSet<(Vec<RegexSymbol>, Rules)>, different_recursive: &Vec<(RegexNode, Rules)>, recursive: &HashSet<(Vec<RegexSymbol>, Rules)>) -> RegexNode {
         let mut res_nodes: Vec<WordNode> = Vec::new();
         if direct.len() > 0 {
@@ -283,7 +321,7 @@ impl Regex {
         RegexNode{nodes: res_nodes}
     }
 
-    pub fn rule_to_regex_rule(rule: &Word, terminal: Terminal) -> Vec<RegexSymbol> {
+    pub fn word_to_regex_word(rule: &Word, terminal: Terminal) -> Vec<RegexSymbol> {
         match rule[0] {
             Symbol::Nonterminal(nt) => {
                 let mut res: Vec<RegexSymbol> = Vec::with_capacity(rule.len());
@@ -353,6 +391,7 @@ impl Regex {
 
 }
 
+// Represents a regular expression.
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
 pub struct RegexNode {
     pub nodes: Vec<WordNode>,
@@ -425,8 +464,9 @@ pub fn print_rule(rule: &Rule, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "]")
 }
 
+// Placeholder structure similar to Symbol, allowing us to keep track of the rules used to null symbols.
+// Only used to generate the finite_state_automaton.
 #[derive(Eq, PartialEq, Debug, Clone, Hash, PartialOrd, Ord)]
-
 pub enum WordNodeSymbol {
     Rules(Rules),
     Terminal(Terminal),
@@ -456,6 +496,8 @@ impl fmt::Display for WordNodeSymbol {
 
 pub type WordNodeWord = Vec<WordNodeSymbol>;
 
+// Partial regular expression. Keeps track of words contained in this part of the expression along with the rules applied to produce that word.
+// When WordNode contains multiple words, each word is considered an alternative. I.E. they form a list separated by the regex '+' operator.
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
 pub struct WordNode {
     pub words: BTreeSet<(WordNodeWord, Rules)>,
@@ -567,11 +609,11 @@ mod tests{
 
     #[test]
     fn rule_to_regex_rule_test() {
-        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), vec![RegexSymbol::Nonterminal('S'), RegexSymbol::Terminal('b')]);
-        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Nonterminal('S'), Symbol::Terminal('a'), Symbol::Terminal('b')], 'a'), vec![RegexSymbol::AtomicLanguage('S', 'a'), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('b')]);
-        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a')], 'a'), vec![RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')]);
-        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('a')], 'a'), vec![RegexSymbol::Epsilon]);
-        assert_eq!(Regex::rule_to_regex_rule(&vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), vec![]);
+        assert_eq!(Regex::word_to_regex_word(&vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), vec![RegexSymbol::Nonterminal('S'), RegexSymbol::Terminal('b')]);
+        assert_eq!(Regex::word_to_regex_word(&vec![Symbol::Nonterminal('S'), Symbol::Terminal('a'), Symbol::Terminal('b')], 'a'), vec![RegexSymbol::AtomicLanguage('S', 'a'), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('b')]);
+        assert_eq!(Regex::word_to_regex_word(&vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a')], 'a'), vec![RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')]);
+        assert_eq!(Regex::word_to_regex_word(&vec![Symbol::Terminal('a')], 'a'), vec![RegexSymbol::Epsilon]);
+        assert_eq!(Regex::word_to_regex_word(&vec![Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('b')], 'a'), vec![]);
     }
 
     #[test]
