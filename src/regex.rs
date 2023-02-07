@@ -507,7 +507,6 @@ impl fmt::Display for WordNodeSymbol {
     }
 }
 
-
 pub type WordNodeWord = Vec<WordNodeSymbol>;
 
 // Partial regular expression. Keeps track of words contained in this part of the expression along with the rules applied to produce that word.
