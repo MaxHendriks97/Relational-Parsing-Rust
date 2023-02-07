@@ -5,7 +5,9 @@
 
 use std::fmt;
 
+// Terminal can only be lowercase.
 pub type Terminal = char;
+// Nonterminals can only be uppercase.
 pub type Nonterminal = char;
 pub type Word = Vec<Symbol>;
 

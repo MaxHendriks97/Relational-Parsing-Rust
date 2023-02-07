@@ -1,2 +1,5 @@
 /target
 *.dot
+*.streams
+*.bigstream
+/.antlr

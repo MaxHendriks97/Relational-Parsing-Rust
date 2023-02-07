@@ -1,3 +1,6 @@
+//! # Memoize
+//! 
+//! The `memoize` module defines the data structures and methods used for memoization during the parsing effort.
 use std::collections::{HashSet, HashMap, BTreeSet};
 use std::fmt;
 
@@ -6,15 +9,16 @@ use crate::word::*;
 use crate::*;
 
 pub type MemEdges = HashMap<(Edge, bool), RulesSet>;
+pub type NewMemPart = HashMap<Edge, (MemEdges, Option<(Depth, RulesSet)>)>;
 pub type MemPart = HashMap<Edge, MemEdges>;
 pub type MemParses = CompletedParses;
 
 pub struct MemoBuilder {
-    prep_deriv_memo: MemPart,
-    deriv_memo: MemPart,
-    deriv_accepting: HashMap<Edge, RulesSet>,
-    prep_memo: MemPart,
-    prep_edges: MemEdges,
+    prep_deriv_memo: MemPart, // -> extra_lang_memo
+    deriv_memo: MemPart, // -> memo
+    deriv_accepting: HashMap<Edge, RulesSet>, // -> memo_accepting
+    prep_memo: MemPart, // -> memo
+    prep_edges: MemEdges, // -> extra_edges
     no_pops: usize,
 }
 
@@ -79,46 +83,55 @@ impl MemoBuilder {
         self.no_pops += 1;
     }
 
+    // Builds an instance of Memo for registration into an instance of Memoization.
     pub fn build_memo(mut self) -> Memo {
-        let opt_memo: Option<MemPart>;
-        let mut memo: MemPart = HashMap::new();
-        let mut memo_accepting: HashMap<Edge, (Depth, RulesSet)> = HashMap::new();
+        let extra_lang_memo: Option<MemPart>;
+        let memo: MemPart = HashMap::new();
+        let mut new_memo: NewMemPart = HashMap::new();
+        let memo_accepting: HashMap<Edge, (Depth, RulesSet)> = HashMap::new();
+
         if !self.prep_deriv_memo.is_empty() {
             for (memedge, edges) in self.prep_memo {
                 for (((source_state, dest_depth), accepting), rules) in edges {
-                    memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
+                    //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
             if self.no_pops > 0 {
                 self.no_pops -= 1;
-                opt_memo = None;
+                extra_lang_memo = None;
             } else {
-                opt_memo = Some(self.prep_deriv_memo);
+                extra_lang_memo = Some(self.prep_deriv_memo);
             }
 
             for (memedge, edges) in self.deriv_memo {
                 for (((source_state, dest_depth), accepting), rules) in edges {
-                    memo.entry(memedge).or_default().entry(((source_state, dest_depth + 1 - self.no_pops), accepting)).or_default().extend(rules)
+                    //memo.entry(memedge).or_default().entry(((source_state, dest_depth + 1 - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth + 1 - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
             for ((state, depth), rules_set) in self.deriv_accepting {
-                memo_accepting.insert((state, depth), (depth + 1 - self.no_pops, rules_set));
+                //memo_accepting.insert((state, depth), (depth + 1 - self.no_pops, rules_set));
+                new_memo.entry((state, depth)).or_default().1 = Some((depth + 1 - self.no_pops, rules_set));
             }
         } else {
             for (memedge, edges) in self.prep_memo {
                 for (((source_state, dest_depth), accepting), rules) in edges {
-                    memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
+                    //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
+                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
                 }
             }
-            opt_memo = None;
+            extra_lang_memo = None;
 
             for (memedge, edges) in self.deriv_memo {
                 for (((source_state, dest_depth), accepting), rules) in edges {
-                    memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
+                    //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
             for ((state, depth), rules_set) in self.deriv_accepting {
-                memo_accepting.insert((state, depth), (depth - self.no_pops, rules_set));
+                //memo_accepting.insert((state, depth), (depth - self.no_pops, rules_set));
+                new_memo.entry((state, depth)).or_default().1 = Some((depth - self.no_pops, rules_set));
             }
         }
 
@@ -127,22 +140,30 @@ impl MemoBuilder {
             extra_edges.insert(((source_state, dest_depth - self.no_pops), accepting), rules_set);
         }
 
-        Memo {opt_memo, memo, memo_accepting, extra_edges, no_pops: self.no_pops}
+        Memo {extra_lang_memo, new_memo, memo, memo_accepting, extra_edges, no_pops: self.no_pops}
     }
 }
 
 #[derive(Debug)]
 pub struct Memo {
-    opt_memo: Option<MemPart>,
+    // Memoizes edges for a second language, used when parsing would create a prep_deriv language.
+    extra_lang_memo: Option<MemPart>,
+    new_memo: NewMemPart,
+    // Main memoization. Used for edges generated by both prepend and derive methods.
     memo: MemPart,
+    // Memoization of edges which are accepting and for which the FSA has no transitions.
+    // Necessary, because sometimes these are needed to retrieve edges from the language at target depth.
     memo_accepting: HashMap<Edge, (Depth, RulesSet)>,
+    // Memoization of edges that are neither accepting, nor "generated". These are the atomic language edges inserted by prepend.
     extra_edges: MemEdges,
+    // Number of pops needed to consume and replace the proper amount of languages in the language_list.
     no_pops: usize,
 }
 
 impl fmt::Display for Memo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "    opt_memo: {:?}\n", self.opt_memo)?;
+        write!(f, "    extra_lang_memo: {:?}\n", self.extra_lang_memo)?;
+        write!(f, "    new_memo: {:?}\n", self.new_memo)?;
         write!(f, "    memo: {:?}\n", self.memo)?;
         write!(f, "    memo_accepting: {:?}\n", self.memo_accepting)?;
         write!(f, "    extra_edges: {:?}\n", self.extra_edges)?;
@@ -151,8 +172,12 @@ impl fmt::Display for Memo {
 }
 
 impl Memo {
-    pub fn get_opt_memo(&self) -> &Option<MemPart> {
-        &self.opt_memo
+    pub fn get_extra_lang_memo(&self) -> &Option<MemPart> {
+        &self.extra_lang_memo
+    }
+
+    pub fn get_new_memo_edge(&self, edge: &Edge) -> Option<&(MemEdges, Option<(Depth, RulesSet)>)> {
+        self.new_memo.get(edge)
     }
 
     pub fn get_memo_edge(&self, edge: &Edge) -> Option<&MemEdges> {

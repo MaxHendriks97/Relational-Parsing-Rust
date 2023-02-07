@@ -75,6 +75,9 @@ impl Regex {
         let mut nullable_atomic: bool = false;
 
         for rule in rule_list {
+            if rule[0] == Symbol::Epsilon {
+                nullable_atomic = true;
+            }
             let regex_rule = Regex::word_to_regex_word(rule, *terminal);
             if regex_rule.len() > 0 {
                 match regex_rule[0] {
@@ -85,10 +88,6 @@ impl Regex {
                             different_atomic.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
                         }
                     },
-                    RegexSymbol::Epsilon => {
-                        nullable_atomic = true;
-                        direct.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
-                    }
                     _ => {
                         direct.insert((regex_rule, vec![(*nonterminal, rule.clone())]));
                     },
@@ -97,9 +96,9 @@ impl Regex {
         }
 
         let mut new_rules: HashSet<(Vec<RegexSymbol>, Rules)> = HashSet::new();
-        Regex::null_rules(rules, &mut direct, nullable_atomic, &mut new_rules);
-        Regex::null_rules(rules, &mut recursive, nullable_atomic, &mut new_rules);
-        Regex::null_rules(rules, &mut different_atomic, nullable_atomic, &mut new_rules);
+        Regex::null_rules(rules, &direct, nullable_atomic, &mut new_rules);
+        Regex::null_rules(rules, &recursive, nullable_atomic, &mut new_rules);
+        Regex::null_rules(rules, &different_atomic, nullable_atomic, &mut new_rules);
 
         for rule in new_rules {
             let no_nulled_rule = Regex::reg_symb_vec_without_nulled(&rule);
@@ -108,6 +107,8 @@ impl Regex {
             if collected_rules.len() > 0 {
                 new_rules.extend(collected_rules);
             }
+            //println!("rule: {:?}", rule);
+            //println!("no_nulled {:?}", no_nulled_rule);
             match no_nulled_rule.0[0] {
                 RegexSymbol::AtomicLanguage(nt, _) => {
                     if *nonterminal == nt {
@@ -130,7 +131,13 @@ impl Regex {
                 },
                 _ => {},
             }
+            //println!("direct: {:?}", direct);
         }
+        //println!("nt: {}, t: {}", nonterminal, terminal);
+        //println!("Direct: {:?}", direct);
+        //println!("Recursive: {:?}", recursive);
+        //println!("Different_atomic: {:?}", different_atomic);
+        //println!();
         (direct, recursive, different_atomic)
     }
     
@@ -147,6 +154,9 @@ impl Regex {
             } else {
                 res.0.push(regsymb.clone());
             }
+        }
+        if res.0.is_empty() {
+            res.0.push(RegexSymbol::Epsilon);
         }
         res
     }
@@ -168,6 +178,7 @@ impl Regex {
         let mut res: HashMap<(Nonterminal, Terminal), RegexNode> = HashMap::new();
 
         while queue.len() > 0 {
+            println!("queue_len: {}", queue.len());
             if let Some((nonterminal, terminal)) = queue.pop_front() {
                 if let Some((direct, recursive, different_atomic)) = atomic_regex_rules_working_copy.get_mut(&(nonterminal, terminal)) {
                     for different_rule in different_atomic.clone() {
@@ -210,6 +221,7 @@ impl Regex {
                                     } else if queue.contains(&(nt, t)) {
                                         all_in_res = false;
                                         queue.push_back((nonterminal, terminal));
+                                        break;
                                     } else {
                                         all_in_res = false;
                                     }
@@ -252,19 +264,20 @@ impl Regex {
                 }
             }
 
-            let nullable_combinations: Vec<Vec<(usize, Rules)>> = Regex::powerset(&nullable_positions);
-            for comb in nullable_combinations {
-                let mut rev = comb.clone();
-                rev.sort();
-                rev.reverse();
-                let mut new_word = rule.0.clone();
-                for (index, erasing_rules) in rev {
-                    new_word[index] = RegexSymbol::Nulled(erasing_rules);
+            let mut nullable_combinations: Vec<Vec<(usize, Rules)>> = Regex::powerset(&nullable_positions);
+            //nullable_combinations.remove(0); //remove [] from nullable combinations
+                for comb in nullable_combinations {
+                    let mut rev = comb.clone();
+                    rev.sort();
+                    rev.reverse();
+                    let mut new_word = rule.0.clone();
+                    for (index, erasing_rules) in rev {
+                        new_word[index] = RegexSymbol::Nulled(erasing_rules);
+                    }
+                    if rule.1.len() > 0 {
+                        new_rules.insert((new_word, rule.1.clone()));
+                    }
                 }
-                if rule.1.len() > 0 {
-                    new_rules.insert((new_word, rule.1.clone()));
-                }
-            }
         }
     }
 
@@ -494,6 +507,7 @@ impl fmt::Display for WordNodeSymbol {
     }
 }
 
+
 pub type WordNodeWord = Vec<WordNodeSymbol>;
 
 // Partial regular expression. Keeps track of words contained in this part of the expression along with the rules applied to produce that word.
@@ -509,9 +523,11 @@ impl fmt::Display for WordNode {
         write!(f, "(")?;
         let mut words_iter = self.words.iter().peekable();
         while words_iter.peek().is_some() {
+            write!(f, "\"")?;
             for symbol in &words_iter.next().unwrap().0 {
                 write!(f, "{}", symbol)?;
             }
+            write!(f, "\"")?;
             if words_iter.peek().is_some() {
                 write!(f, " + ")?;
             }

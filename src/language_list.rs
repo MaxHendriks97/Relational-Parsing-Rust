@@ -1,12 +1,17 @@
-use std::collections::{hash_set, hash_map};
-use std::collections::{HashMap, HashSet, BTreeSet};
+//! # Language list
+//! 
+//! The `Language_List` module defines the Language and LanguageList data structures necessary to keep track of all information relevant during parsing.
+//! Additionally, it supplies many methods that aid in the parsing effort.
+use std::collections::{hash_set, hash_map, btree_map};
+use std::collections::{HashMap, HashSet, BTreeSet, BTreeMap};
 use std::fmt;
+use std::mem;
 
 use crate::*;
 
 pub type Depth = usize;
 pub type Edge = (State, Depth);
-pub type Edges = HashMap<Edge, RulesSet>;
+pub type Edges = BTreeMap<Edge, RulesSet>;
 pub type CompletedParses = RulesSet;
 
 pub fn print_edge(edge: &Edge, f: &mut fmt::Formatter) -> fmt::Result {
@@ -49,7 +54,7 @@ impl fmt::Display for Language {
 
 impl Language {
     pub fn new() -> Language {
-        Language {edges: HashMap::new(), completed_parses: HashSet::new(), fin: false}
+        Language {edges: BTreeMap::new(), completed_parses: HashSet::new(), fin: false}
     }
 
     pub fn new_from(edges: Edges, completed_parses: CompletedParses, fin: bool) -> Language {
@@ -57,7 +62,7 @@ impl Language {
     }
 
     pub fn start_lang() -> Language {
-        Language {edges: HashMap::new(), completed_parses: HashSet::new(), fin: true}
+        Language {edges: BTreeMap::new(), completed_parses: HashSet::new(), fin: true}
     }
 
     pub fn get_edge_rules(&self, edge: &Edge) -> Option<&RulesSet> {
@@ -84,8 +89,8 @@ impl Language {
         self.fin = true;
     }
 
-    pub fn take_edges(&mut self) -> hash_map::Drain<Edge, RulesSet> {
-        self.edges.drain()
+    pub fn take_edges(&mut self) -> BTreeMap<(usize, usize), HashSet<Vec<(char, Vec<Symbol>)>>> {
+        mem::take(&mut self.edges)
     }
 
     pub fn edges_ref(&self) -> &Edges {
@@ -98,6 +103,10 @@ impl Language {
 
     pub fn take_completed_parses(&mut self) -> hash_set::Drain<Rules> {
         self.completed_parses.drain()
+    }
+
+    pub fn completed_parses_ref(&self) -> &CompletedParses {
+        &self.completed_parses
     }
 
     pub fn insert_edge(&mut self, edge: Edge, opt_rules: Option<Rules>) {
@@ -118,6 +127,12 @@ impl Language {
 
     pub fn extend_completed_parses(&mut self, completed_parses: impl Iterator<Item = Rules>) {
         self.completed_parses.extend(completed_parses);
+    }
+
+    pub fn extend_edges(&mut self, edges: impl Iterator<Item = (Edge, RulesSet)>) {
+        for ((state, depth), rules) in edges {
+            self.edges.entry((state, depth)).or_default().extend(rules);
+        }
     }
 
     pub fn find_lowest_depth(&self) -> Depth {
@@ -144,6 +159,20 @@ impl Language {
             res.insert((*state, *depth));
         }
 
+        res
+    }
+
+    pub fn edge_count(&self) -> usize {
+        self.edges.len()
+    }
+
+    pub fn parse_count(&self) -> usize {
+        let mut res: usize = 0;
+        for edge in &self.edges {
+            if edge.1.len() > res {
+                res = edge.1.len();
+            }
+        }
         res
     }
 }
@@ -181,4 +210,15 @@ impl LanguageList {
         self.languages.pop()
     }
 
+    pub fn top_level_edge_count(&self) -> Option<usize> {
+        Some(self.languages.last()?.edge_count())
+    }
+
+    pub fn top_level_parse_count(&self) -> Option<usize> {
+        Some(self.languages.last()?.parse_count())
+    }
+
+    pub fn language_count(&self) -> usize {
+        self.languages.len()
+    }
 }
