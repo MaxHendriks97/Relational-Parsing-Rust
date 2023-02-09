@@ -3,3 +3,4 @@
 *.streams
 *.bigstream
 /.antlr
+*.txt

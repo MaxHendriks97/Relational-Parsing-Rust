@@ -405,6 +405,70 @@ pub fn find_parses(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mu
     }
 }
 
+pub fn parse_count_memo(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memoize) -> (Result<Language, ParseError>, usize) {
+    let finite_state_automaton: &FiniteStateAutomaton = &grammar.finite_state_automaton;
+    let mut language_list: LanguageList = LanguageList::new();
+
+    let (start_state, start_accepting) = finite_state_automaton.get_start();
+    language_list.insert_new_language(Language::new_from(BTreeMap::from([((start_state, 1), HashSet::new())]), HashSet::new(), start_accepting));
+
+    let mut memcount: usize = 0;
+
+    for token in token_string {
+        if let Some(curr_lang) = language_list.pop_lang() {
+            if let Some(memo) = memoize.get_memo(curr_lang.edges_ref().keys().copied().collect(), *token) {
+                apply_memo(memo, curr_lang, &mut language_list, finite_state_automaton);
+                memcount += 1;
+            } else {
+                let mut curr: ParseRound = ParseRound::new();
+                curr.derive(&curr_lang, &language_list, *token, finite_state_automaton);
+
+                for nonterminal in &grammar.nonterminals {
+                    if let Some(atomic) = finite_state_automaton.get_atomic(Symbol::Nonterminal(*nonterminal), *token) {
+                        let prep_deriv = curr.prep_derive(&curr_lang, &language_list, *nonterminal, finite_state_automaton);
+                        if prep_deriv.0 {
+                            curr.prepend(atomic, &language_list, finite_state_automaton, prep_deriv.1);
+                        }
+                    }
+                }
+
+                match curr.register(&mut language_list, finite_state_automaton) {
+                    Ok(memo) => {
+                        memoize.memoize(curr_lang.make_mem_edges(), *token, memo);
+                    },
+                    Err(e) => {
+                        return (Err(e), memcount);
+                    }
+                }
+            }
+        } else {
+            return (Err(ParseError), memcount);
+        }
+        
+    }
+
+    if let Some(mut last_lang) = language_list.pop_lang() {
+        ParseRound::e_sim(&mut last_lang, &language_list, finite_state_automaton);
+        (Ok(last_lang), memcount)
+    } else {
+        (Err(ParseError), memcount)
+    }
+}
+
+pub fn find_parses_count_memo(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memoize) -> (Result<CompletedParses, ParseError>, usize) {
+    let (parse, memcount) = parse_count_memo(token_string, grammar, memoize);
+    match parse {
+        Ok(mut last_lang) => {
+            if last_lang.is_final() && last_lang.has_completed_parses() {
+                (Ok(last_lang.take_completed_parses().collect()), memcount)
+            } else {
+                (Err(ParseError), memcount)
+            }
+        },
+        Err(e) => {(Err(e), memcount)}
+    }
+}
+
 pub fn prepend_rules_to_rules_set(rules: &Rules, rules_set: &HashSet<Rules>) -> HashSet<Rules> {
     if rules_set.is_empty() && !rules.is_empty() {
         HashSet::from([rules.clone()])

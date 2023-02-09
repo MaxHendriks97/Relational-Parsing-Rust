@@ -265,7 +265,6 @@ pub fn lua_like_grammar() -> Grammar {
         'F', //functioncall
         'G', //funcname
         'H', //funcbody
-        'I', //funcnamelist
         'J', //function
         'K', //tableconstructor
         'L', //fieldlist
@@ -324,24 +323,20 @@ pub fn lua_like_grammar() -> Grammar {
         vec![Symbol::Terminal('a')], //break
     ]));
     rules.insert('G', HashSet::from([//funcname
-        vec![Symbol::Terminal('n'), Symbol::Nonterminal('I')], //Name {'.' Name}
-        vec![Symbol::Terminal('n'), Symbol::Nonterminal('I'), Symbol::Terminal(':'), Symbol::Terminal('n')], //Name {'.' Name} : Name
+        vec![Symbol::Nonterminal('G'), Symbol::Terminal('.'), Symbol::Terminal('n')],
+        vec![Symbol::Terminal('n')],
     ]));
-    rules.insert('I', HashSet::from([//funcnamelist {'.' Name} RIGHT RECURSIVE
-        vec![Symbol::Terminal('.'), Symbol::Terminal('n'), Symbol::Nonterminal('I')],
-        vec![Symbol::Epsilon],
-    ]));
-    rules.insert('V', HashSet::from([//varlist RIGHT RECURSIVE
-        vec![Symbol::Nonterminal('W')], //var
-        vec![Symbol::Nonterminal('W'), Symbol::Terminal(','), Symbol::Nonterminal('V')], //var ',' ...
+    rules.insert('V', HashSet::from([//varlist LEFT RECURSIVE
+        vec![Symbol::Nonterminal('V'), Symbol::Terminal(','), Symbol::Nonterminal('W')],
+        vec![Symbol::Nonterminal('W')],
     ]));
     rules.insert('W', HashSet::from([//var
         vec![Symbol::Terminal('n')], //Name
         vec![Symbol::Nonterminal('X'), Symbol::Terminal('['), Symbol::Nonterminal('E'), Symbol::Terminal(']')], //prefixexp '[' exp ']'
         vec![Symbol::Nonterminal('X'), Symbol::Terminal('.'), Symbol::Terminal('n')], //prefixexp '.' Name
     ]));
-    rules.insert('N', HashSet::from([//namelist RIGHT RECURSIVE
-        vec![Symbol::Terminal('n'), Symbol::Terminal(','), Symbol::Nonterminal('N')],
+    rules.insert('N', HashSet::from([//namelist LEFT RECURSIVE
+        vec![Symbol::Nonterminal('N'), Symbol::Terminal(','), Symbol::Terminal('n')],
         vec![Symbol::Terminal('n')],
     ]));
     rules.insert('D', HashSet::from([//explist LEFT RECURSIVE
@@ -419,6 +414,35 @@ pub fn lua_like_grammar() -> Grammar {
         vec![Symbol::Terminal('-')], //'-'
         vec![Symbol::Terminal('z')], //not
         vec![Symbol::Terminal('#')], //'#'
+    ]));
+    Grammar::new(terminals, nonterminals, start, rules)
+}
+
+pub fn another_broken_grammar() -> Grammar {
+    // A -> B | C
+    // B -> D | B b
+    // C -> D | C c
+    // D -> a
+    // ((a(b)*) + (a(c)*))
+    // (a + a) (b + c)*  
+    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B', 'C', 'D']);
+    let start: Nonterminal = 'A';
+    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+    rules.insert('A', HashSet::from([
+        vec![Symbol::Nonterminal('B')],
+        vec![Symbol::Nonterminal('C')],
+    ]));
+    rules.insert('B', HashSet::from([
+        vec![Symbol::Nonterminal('D')],
+        vec![Symbol::Nonterminal('B'), Symbol::Terminal('b')],
+    ]));
+    rules.insert('C', HashSet::from([
+        vec![Symbol::Nonterminal('D')],
+        vec![Symbol::Nonterminal('C'), Symbol::Terminal('c')],
+    ]));
+    rules.insert('D', HashSet::from([
+        vec![Symbol::Terminal('a'), Symbol::Terminal('a')],
     ]));
     Grammar::new(terminals, nonterminals, start, rules)
 }

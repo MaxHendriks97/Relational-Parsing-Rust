@@ -178,7 +178,6 @@ impl Regex {
         let mut res: HashMap<(Nonterminal, Terminal), RegexNode> = HashMap::new();
 
         while queue.len() > 0 {
-            println!("queue_len: {}", queue.len());
             if let Some((nonterminal, terminal)) = queue.pop_front() {
                 if let Some((direct, recursive, different_atomic)) = atomic_regex_rules_working_copy.get_mut(&(nonterminal, terminal)) {
                     for different_rule in different_atomic.clone() {
@@ -209,6 +208,12 @@ impl Regex {
                     }
                     
                     if different_atomic.len() == 0 && direct.len() > 0 {
+                        if nonterminal == 'V' && terminal == '(' {
+                            println!("[V](()");
+                            println!("direct: {:?}", direct);
+                            println!("different_atomic: {:?}", different_atomic);
+                            println!("recursive: {:?}", recursive);
+                        }
                         res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &Vec::new(), &recursive));
                     } else {
                         if different_atomic.len() > 0 {
@@ -228,6 +233,13 @@ impl Regex {
                                 }
                             }
                             if all_in_res {
+                                if nonterminal == 'V' && terminal == '(' {
+                                    println!("[V](()");
+                                    println!("direct: {:?}", direct);
+                                    println!("different_atomic: {:?}", different_atomic);
+                                    println!("recursive: {:?}", recursive);
+                                    println!("different_recursive: {:?}", regex_nodes);
+                                }
                                 res.insert((nonterminal, terminal), Regex::build_regex_node(&direct, &regex_nodes, &recursive));
                                 continue;
                             }
@@ -311,6 +323,7 @@ impl Regex {
             res_nodes.push(WordNode{words: direct_word_set, kleene_star: false});
         }
         if different_recursive.len() > 0 {
+            println!("using diff rec");
             if different_recursive.len() == 1 {
                 res_nodes.extend(different_recursive[0].0.append_rule(&different_recursive[0].1));
             } else {

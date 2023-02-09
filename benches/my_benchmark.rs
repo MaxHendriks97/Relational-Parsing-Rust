@@ -2,11 +2,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Benchmark
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, prelude::*, BufReader};
+use std::io::{prelude::*, BufReader};
 
 use std::time::{Duration, Instant};
 
-use relational_parsing::{Symbol, Nonterminal, Terminal, Word, Grammar, find_parses_no_memo};
+use relational_parsing::{Symbol, Nonterminal, Terminal, Word, Grammar, find_parses_no_memo, parse_count_memo};
 use relational_parsing::find_parses;
 
 pub fn basic_relational_parsing_example_grammar() -> Grammar {
@@ -116,7 +116,6 @@ fn parse_grammars(c: &mut Criterion) {
     ];
 
     for (grammar, stream_file) in grammars.iter() {
-        let mut memoize = relational_parsing::Memoize::new();
 
         if let Ok(file) = File::open(stream_file) {
             let reader = BufReader::new(file);
@@ -124,17 +123,16 @@ fn parse_grammars(c: &mut Criterion) {
             let plot_config = PlotConfiguration::default();
 
             let mut group = c.benchmark_group(*stream_file);
+            group.sampling_mode(criterion::SamplingMode::Flat);
+            group.measurement_time(Duration::from_secs(20));
             group.plot_config(plot_config);
 
-            for (index, opt_line) in reader.lines().enumerate() {
+            for opt_line in reader.lines() {
                 if let Ok(line) = opt_line {
                     let tokens: Vec<char> = line.chars().collect();
-                
-                    //populate the memoization table
-                    find_parses(&tokens, &grammar, &mut memoize);
 
                     group.bench_with_input(BenchmarkId::new("Parse", tokens.len()), &tokens, |b, tokens| {
-                        b.iter(|| find_parses(tokens, &grammar, &mut memoize));
+                        b.iter(|| find_parses(tokens, &grammar, &mut relational_parsing::Memoize::new()));
                     });
 
                     group.bench_with_input(BenchmarkId::new("Parse_no_memo", tokens.len()), &tokens, |b, tokens| {

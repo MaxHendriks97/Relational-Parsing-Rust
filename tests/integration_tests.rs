@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::File;
+use std::io::{prelude::*, BufReader};
 
-use relational_parsing::{self, Grammar};
+use relational_parsing::{self, Grammar, parse_count_memo};
 use crate::relational_parsing::{Regex, 
     Memoize,
     Symbol, 
@@ -173,9 +175,16 @@ fn lua_dot() {
     let grammar = common::lua_like_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
+    println!("{:?}", reg.regex.get(&('G', 'n')).unwrap());
     grammar.finite_state_automaton.to_dot("lua_like").expect("error");
 }
 
+#[test]
+fn broken() {
+    let grammar = common::another_broken_grammar();
+    let reg = Regex::new(&grammar.terminals, &grammar.rules);
+    println!("{}", reg);
+}
 #[test]
 fn basic_relational_grammar_fsa_test() {
     let grammar = common::basic_relational_parsing_example_grammar();
@@ -1591,3 +1600,40 @@ fn indirect_right_recursive_grammar_parse_test() {
     //);
 //}
 
+#[test]
+fn mem_count() {
+    let grammars: Vec<(Grammar, &str)> = vec![
+        (common::basic_relational_parsing_example_grammar(), "basic.streams"),
+        (common::e_rule_relational_parsing_example_grammar(), "e_rule.streams"),
+        (common::odd_number_of_a_grammar(), "odd_nr_a.streams"),
+        (common::direct_left_recursive_grammar(), "direct_left.streams"),
+        (common::indirect_left_recursive_grammar(), "indirect_left.streams"),
+        (common::direct_right_recursive_grammar(), "direct_right.streams"),
+        (common::indirect_right_recursive_grammar(), "indirect_right.streams")
+    ];
+
+    for (grammar, stream) in grammars {
+        println!("{}", stream);
+        if let Ok(streams_file) = File::open(stream) {
+            if let Ok(mut memcount_file) = File::create(format!("{}_memcount.txt", stream)) {
+                let reader = BufReader::new(streams_file);
+
+                for opt_line in reader.lines() {
+                    if let Ok(line) = opt_line {
+                        let tokens: Vec<char> = line.chars().collect();
+
+                        let (res, memcount) = parse_count_memo(&tokens, &grammar, &mut Memoize::new());
+                        match res {
+                            Ok(_) => {
+                                memcount_file.write_all(format!("{}, 1, {}\n", tokens.len(), memcount).as_bytes()).expect("could not write");
+                            },
+                            Err(_) => {
+                                memcount_file.write_all(format!("{}, 0, {}\n", tokens.len(), memcount).as_bytes()).expect("could not write");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
