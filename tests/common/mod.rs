@@ -424,7 +424,6 @@ pub fn another_broken_grammar() -> Grammar {
     // C -> D | C c
     // D -> a
     // ((a(b)*) + (a(c)*))
-    // (a + a) (b + c)*  
     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B', 'C', 'D']);
     let start: Nonterminal = 'A';

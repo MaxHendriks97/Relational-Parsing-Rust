@@ -4,12 +4,16 @@
 //! defines a simple structure that allows us to express combinations of these symbols as words.
 
 use std::fmt;
+use std::collections::HashSet;
 
 // Terminal can only be lowercase.
 pub type Terminal = char;
 // Nonterminals can only be uppercase.
 pub type Nonterminal = char;
 pub type Word = Vec<Symbol>;
+pub type Rule = (Nonterminal, Word);
+pub type Rules = Vec<Rule>;
+pub type RulesSet = HashSet<Rules>;
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Copy, PartialOrd, Ord)]
 pub enum Symbol {
