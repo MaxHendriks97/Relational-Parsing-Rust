@@ -10,10 +10,6 @@ use std::collections::HashSet;
 pub type Terminal = char;
 // Nonterminals can only be uppercase.
 pub type Nonterminal = char;
-pub type Word = Vec<Symbol>;
-pub type Rule = (Nonterminal, Word);
-pub type Rules = Vec<Rule>;
-pub type RulesSet = HashSet<Rules>;
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Copy, PartialOrd, Ord)]
 pub enum Symbol {
@@ -30,4 +26,45 @@ impl fmt::Display for Symbol {
             Symbol::Epsilon => write!(f, "e"),
         }
     }
+}
+
+pub type Word = Vec<Symbol>;
+
+pub fn print_word(word: &Word, f: &mut fmt::Formatter) -> fmt::Result {
+    for symbol in word {
+        write!(f, "{}", symbol)?;
+    }
+    Ok(())
+}
+
+pub type Rule = (Nonterminal, Word);
+
+pub fn print_rule(rule: &Rule, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "({}, -> ", rule.0)?;
+    print_word(&rule.1, f)?;
+    write!(f, ")")
+}
+
+pub type Rules = Vec<Rule>;
+
+pub fn print_rules(rules: &Rules, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "[")?;
+    let mut peekable = rules.iter().peekable();
+    while let Some(rule) = peekable.next() {
+        print_rule(rule, f)?;
+        if peekable.peek().is_some() {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, "]")
+}
+
+pub type RulesSet = HashSet<Rules>;
+
+pub fn print_rules_set(rules_set: &RulesSet, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{{")?;
+    for rules in rules_set {
+        print_rules(rules, f)?;
+    }
+    write!(f, "}}")
 }

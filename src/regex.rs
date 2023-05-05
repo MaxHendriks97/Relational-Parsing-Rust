@@ -25,11 +25,52 @@ pub enum RegexSymbol {
     Epsilon,
 }
 
+impl fmt::Display for RegexSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RegexSymbol::Terminal(t) => write!(f, "{}", t),
+            RegexSymbol::Nonterminal(nt) => write!(f, "{}", nt),
+            RegexSymbol::AtomicLanguage(nt, t) => write!(f, "[{}]^({})", nt, t),
+            RegexSymbol::Nulled(rules) => print_rules(rules, f),
+            RegexSymbol::Epsilon => write!(f, "epsilon"),
+        }
+    }
+}
+
 type RegexWord = Vec<RegexSymbol>;
+
+pub fn print_regex_word(regex_word: &RegexWord, f: &mut fmt::Formatter) -> fmt::Result {
+    for regex_symbol in regex_word {
+        write!(f, "{}", regex_symbol)?;
+    }
+    Ok(())
+}
+
 type RegexWordRule = (RegexWord, Rules);
+
+pub fn print_regex_word_rule(regex_word_rule: &RegexWordRule, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "(")?;
+    print_regex_word(&regex_word_rule.0, f)?;
+    write!(f, " -> ")?;
+    print_rules(&regex_word_rule.1, f)?;
+    write!(f, ")")
+}
+
 type RegexWordRuleSet = HashSet<RegexWordRule>;
 
-#[derive(PartialEq, Eq, Debug)]
+pub fn print_regex_word_rule_set(regex_word_rule_set: &RegexWordRuleSet, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{{")?;
+    let mut peekable = regex_word_rule_set.iter().peekable();
+    while let Some(regex_word_rule) = peekable.next() {
+        print_regex_word_rule(regex_word_rule, f)?;
+        if peekable.peek().is_some() {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, "}}")
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct IntermediateAtomic {
     direct: RegexWordRuleSet,
     recursive: RegexWordRuleSet,
@@ -58,13 +99,20 @@ impl Regex {
             }
         }
 
-        // also need to null at some point
-
-
-        let mut waiting_atomics: VecDeque<((Nonterminal, Terminal), IntermediateAtomic)> = VecDeque::new();
+        let mut waiting_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
         let mut finished_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
 
         //first pass, then slowly resolve waiting atomics.
+        for (key, intermediate_atomic) in &intermediate_atomics {
+            if intermediate_atomic.direct.is_empty() && intermediate_atomic.different_atomic.is_empty() {
+                continue;
+            }
+            if !intermediate_atomic.different_atomic.is_empty() {
+                waiting_atomics.insert(key.clone(), intermediate_atomic.clone());
+            } else {
+                finished_atomics.insert(key.clone(), intermediate_atomic.clone());
+            }
+        }
 
         unimplemented!()
     }
@@ -175,13 +223,13 @@ impl IntermediateAtomic {
                 match new_regex_word[0] {
                     RegexSymbol::AtomicLanguage(nt, _) => {
                         if nonterminal == nt {
-                            recursive.insert((new_regex_word, [vec![(nonterminal, word.clone())], nulled_rules.clone()].concat()));
+                            recursive.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
                         } else {
-                            different_atomic.insert((new_regex_word, [vec![(nonterminal, word.clone())], nulled_rules.clone()].concat()));
+                            different_atomic.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
                         }
                     },
                     _ => {
-                        direct.insert((new_regex_word, [vec![(nonterminal, word.clone())], nulled_rules.clone()].concat()));
+                        direct.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
                     },
                 }
             }
@@ -372,6 +420,33 @@ mod tests {
             //     different_atomic: HashSet::new(),
             // });
         }
+        
+        let mut many_nullables: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        many_nullables.insert('S', HashSet::from([
+            vec![Symbol::Nonterminal('A'), Symbol::Nonterminal('B')],
+            vec![Symbol::Nonterminal('B')],
+            vec![Symbol::Terminal('z')],
+        ]));
+        many_nullables.insert('A', HashSet::from([
+            vec![Symbol::Epsilon],
+            vec![Symbol::Terminal('a')],
+        ]));
+        many_nullables.insert('B', HashSet::from([
+            vec![Symbol::Epsilon],
+            vec![Symbol::Nonterminal('A')],
+        ]));
+        many_nullables.insert('C', HashSet::from([
+            vec![Symbol::Terminal('c')],
+            vec![Symbol::Nonterminal('D')],
+            vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')],
+        ]));
+        many_nullables.insert('D', HashSet::from([
+            vec![Symbol::Terminal('D')]
+        ]));
+        let nullable_nonterminals = Regex::find_all_nullables(&many_nullables);
+        if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', many_nullables.get(&'S').unwrap(), &nullable_nonterminals) {
+            println!("{:?}", intermediate_atomic);
+        }
     }
 
     #[test]
@@ -396,7 +471,7 @@ mod tests {
             vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')],
         ]));
         rules.insert('D', HashSet::from([
-            vec![Symbol::Terminal('D')]
+            vec![Symbol::Terminal('d')]
         ]));
 
         println!("{:?}", Regex::find_all_nullables(&rules));
@@ -415,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn shift_regex_word() {    
+    fn shift_regex_word() {
         // fn shift_regex_word(word: &RegexWord, terminal: Terminal) -> Option<(RegexWord, RulesSet)> {
         let regex_word: RegexWord = vec![RegexSymbol::Nulled(vec![('S', vec![Symbol::Nonterminal('B')]), ('B', vec![Symbol::Epsilon])]), RegexSymbol::Nulled(vec![('B', vec![Symbol::Epsilon])]), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')];
         println!("{:?}", IntermediateAtomic::shift_regex_word(&regex_word, 'a'));
