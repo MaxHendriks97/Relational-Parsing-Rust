@@ -5,13 +5,12 @@
 //! as regular expressions.
 
 use std::fmt;
-use std::collections::{HashSet, HashMap, BTreeSet, VecDeque};
-use std::ptr::null;
+use std::collections::{HashSet, HashMap, BTreeSet};
 
 use crate::word::*;
 
 // Used as an intermediary data structure, keeping track of some additional information while we calculate atomic languages.
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Eq, PartialEq, Hash, Debug, Clone, PartialOrd, Ord)]
 pub enum RegexSymbol {
     Terminal(Terminal),
     Nonterminal(Nonterminal),
@@ -77,12 +76,20 @@ struct IntermediateAtomic {
     different_atomic: RegexWordRuleSet,
 }
 
-pub struct Regex(HashMap<(Nonterminal, Terminal), Node>);
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct RecursiveAtomic{
+    direct: RegexWordRuleSet,
+    recursive: RegexWordRuleSet,
+    different_atomic: BTreeSet<(Box<RecursiveAtomic>, RegexWord)>,
+}
 
-enum Node {
+pub struct Regex(pub HashMap<(Nonterminal, Terminal), Node>);
+
+#[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord, Hash)]
+pub enum Node {
     Seq {nodes: Vec<Node>, kleene: bool},
-    Opt {nodes: HashSet<Node>, kleene: bool},
-    Word {word: Word, kleene: bool},
+    Opt {nodes: BTreeSet<Node>, kleene: bool},
+    Word {word: RegexWord, rules: Rules, kleene: bool},
 }
 
 impl Regex {
@@ -104,17 +111,27 @@ impl Regex {
 
         //first pass, then slowly resolve waiting atomics.
         for (key, intermediate_atomic) in &intermediate_atomics {
+            println!("{:?}", intermediate_atomic);
             if intermediate_atomic.direct.is_empty() && intermediate_atomic.different_atomic.is_empty() {
                 continue;
             }
             if !intermediate_atomic.different_atomic.is_empty() {
+                //TODO Implement waiting atomic into recursive atomic
                 waiting_atomics.insert(key.clone(), intermediate_atomic.clone());
             } else {
                 finished_atomics.insert(key.clone(), intermediate_atomic.clone());
             }
         }
 
-        unimplemented!()
+        //TODO Resolve waiting atomic
+
+        let mut res: Regex = Regex(HashMap::new());
+
+        for (key, atomic) in finished_atomics {
+            res.0.insert(key.clone(), IntermediateAtomic::atomic_to_node(atomic));
+        }
+
+        res
     }
 
     pub fn print_with_rules(&self) {
@@ -206,7 +223,55 @@ impl Regex {
 
 impl fmt::Display for Regex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unimplemented!()
+        for ((nonterminal, terminal), node) in &self.0 {
+            write!(f, "[{}]({}): {}\n", nonterminal, terminal, node)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Node::Word { word, rules, kleene } => {
+                write!(f, "(")?;
+                print_regex_word(word, f)?;
+                write!(f, " ")?;
+                print_rules(rules, f)?;
+                write!(f, ")")?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            },
+            Node::Opt { nodes, kleene } => {
+                write!(f, "(")?;
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    write!(f, "{}", node)?;
+                    if iter.peek().is_some() {
+                        write!(f, " + ")?;
+                    }
+                }
+                write!(f, ")")?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            },
+            Node::Seq { nodes, kleene } => {
+                write!(f, "(")?;
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    write!(f, "{}", node)?;
+                }
+                write!(f, ")")?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            }
+        }
     }
 }
 
@@ -239,6 +304,51 @@ impl IntermediateAtomic {
             Some(IntermediateAtomic { direct, recursive, different_atomic })
         } else {
             None
+        }
+    }
+
+    fn atomic_to_node(atomic: IntermediateAtomic) -> Node {
+        if !atomic.different_atomic.is_empty() {
+            panic!("Different_atomic should be empty: {:?}", atomic);
+        }
+
+        if let Some(direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
+            if let Some(recursive_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.recursive, true) {
+                // We have a recursive node, return a sequence with the direct and recursive node, recursive having kleene set to true
+                let new_recursive = match recursive_node {
+                    Node::Opt {nodes, ..} => Node::Opt{ nodes, kleene: true },
+                    Node::Word { word, rules, ..} => Node::Word { word, rules, kleene: true },
+                    Node::Seq { .. } => panic!(), // recursive_node cannot be a sequence
+                };
+                Node::Seq { nodes: vec![direct_node, new_recursive], kleene: false }
+            } else {
+                // Return only direct node
+                direct_node
+            }
+        } else {
+            panic!("Could not make direct node with atomic: {:?}", atomic)
+        }
+    }
+
+    fn regex_word_rule_set_to_node(set: &RegexWordRuleSet, rec: bool) -> Option<Node> {
+        let mut nodes: BTreeSet<Node> = BTreeSet::new();
+
+        for (regex_word, rules) in set {
+            if rec {
+                nodes.insert(Node::Word{word: regex_word[1..].to_vec(), rules: rules.clone(), kleene: false});
+            } else {
+                nodes.insert(Node::Word{word: regex_word.clone(), rules: rules.clone(), kleene: false});
+            }
+        }
+
+        if nodes.len() == 0 {
+            None
+        } else if nodes.len() == 1 {
+            // If set length is 1, we can return that node
+            Some(nodes.into_iter().nth(0).unwrap())
+        } else {
+            // Otherwise we will need an opt node
+            Some(Node::Opt{nodes, kleene: false})
         }
     }
 
@@ -352,10 +462,117 @@ impl IntermediateAtomic {
 
 }
 
+impl Node {
+    // Returns the rules by which a node is nulled.
+    // Returns no nullings if the node contains a symbol
+    pub fn get_nulling_rules(&self) -> Option<RulesSet> {
+        let mut rules_set: RulesSet = HashSet::new();
+        match self {
+            Node::Opt { nodes, .. } => {
+                for node in nodes {
+                    if let Some(rules) = node.get_nulling_rules() {
+                        rules_set.extend(rules);
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            Node::Seq { nodes, .. } => {
+                for node in nodes {
+                    if let Some(new_rules) = node.get_nulling_rules() {
+                        rules_set = Node::stitch_nulling_sets(&rules_set, &new_rules);
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            Node::Word { word, rules, .. } => {
+                if let Some(r) = Node::word_get_nulling_rules(word) {
+                    rules_set.insert([r, rules.clone()].concat());
+                } else {
+                    return None
+                }
+            }
+        }
+        Some(rules_set)
+    }
+
+    fn word_get_nulling_rules(word: &RegexWord) -> Option<Rules> {
+        let mut rules: Rules = Vec::new();
+        for symbol in word {
+            if let Some(r) = Node::symbol_get_nulling_rules(symbol) {
+                rules = [rules, r].concat();
+            } else {
+                return None
+            }
+        }
+        return Some(rules)
+    }
+
+    fn symbol_get_nulling_rules(symbol: &RegexSymbol) -> Option<Rules> {
+        match symbol {
+            RegexSymbol::AtomicLanguage(_, _) => None,
+            RegexSymbol::Nonterminal(_) => None,
+            RegexSymbol::Terminal(_) => None,
+            RegexSymbol::Epsilon => Some(Vec::new()),
+            RegexSymbol::Nulled(nulled_rules) => Some(nulled_rules.clone()),
+        }
+    }
+
+    fn stitch_nulling_sets(set1: &RulesSet, set2: &RulesSet) -> RulesSet {
+        if set1.is_empty() {
+            set2.clone()
+        } else if set2.is_empty() {
+            set1.clone()
+        } else {
+            let mut res: RulesSet = HashSet::new();
+            for rule1 in set1 {
+                for rule2 in set2 {
+                    res.insert([rule1.clone(), rule2.clone()].concat());
+                }
+            }
+            res
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn standard_rules() -> HashMap<Nonterminal, HashSet<Word>> {
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
+            vec![Symbol::Terminal('a')],
+            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
+            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
+        ]));
+
+
+        rules
+    }
+
+    fn epsilon_rules() -> HashMap<Nonterminal, HashSet<Word>> {
+        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
+        rules.insert('S', HashSet::from([
+            vec![Symbol::Terminal('a')],
+            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
+            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
+            vec![Symbol::Epsilon]
+        ]));
+
+        rules
+    }
+
+    #[test]
+    fn regex() {
+        let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
+
+        println!("{}", &Regex::new(&terminals, &standard_rules()));
+        println!("{}", &Regex::new(&terminals, &epsilon_rules()));
+    }
+
 
     #[test]
     fn intermediate_atomic() {

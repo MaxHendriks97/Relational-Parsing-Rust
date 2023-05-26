@@ -104,149 +104,41 @@ impl FiniteStateAutomaton {
             atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), (epsilon, HashSet::new()));
         }
 
-        let atomic_regex: Regex = Regex::new(terminals, rules);
-        let mut regex_to_state: HashMap<VecDeque<WordNode>, (State, State)> = HashMap::new();
+        let Regex(atomic_regex): Regex = Regex::new(terminals, rules);
+        let mut regex_to_state: HashMap<VecDeque<Node>, (State, State)> = HashMap::new();
 
-        for ((nonterminal, terminal), node) in atomic_regex.regex {
-            if let (true, rules) = node.is_e_node_get_rules() {
+        // For every atomic language, build a FSA or (partially) hook into an existing one
+        for ((nonterminal, terminal), node) in atomic_regex {
+            // If the regex is null, add the atomic language to the accepting node
+            if let Some(rules) = node.get_nulling_rules() {
                 atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (epsilon, rules));
                 continue;
             }
 
-            let mut wordnode_queue: Vec<WordNode> = node.nodes.clone();
-            let mut regex_to_state_key: VecDeque<WordNode> = VecDeque::with_capacity(wordnode_queue.len());
+            let mut node_queue: Vec<Node> = Vec::from([node]);
+            let mut regex_to_state_key: VecDeque<Node> = VecDeque::new();
             let mut atomic_rules: HashSet<Rules> = HashSet::new();
 
             let mut node_end: State;
-
-            while let Some(wordnode) = wordnode_queue.pop() {
-
-                let prev_key = regex_to_state_key.clone();
-                regex_to_state_key.push_front(wordnode.clone());
-
-                let node_start: State;
-
-                if let Some((dest, end)) = regex_to_state.get(&regex_to_state_key) {
-                    let (dest, end) = (*dest, *end);
-                    if let (true, rule_set) = wordnode.is_e_node_get_rules() {
-                        atomic_rules = rule_set;
-                        regex_to_state_key.push_front(wordnode.clone());
-                        regex_to_state.insert(regex_to_state_key.clone(), (dest, end));
-                        continue;
-                    } 
-                    continue;
-                } else {
-                    if let Some((dest, end)) = regex_to_state.get(&prev_key) {
-                        node_end = *dest;
-                        let end = *end;
-                        if let (true, rule_set) = wordnode.is_e_node_get_rules() {
-                            atomic_rules = rule_set;
-                            regex_to_state.insert(regex_to_state_key.clone(), (node_end, end));
-                            continue;
-                        }
-                        highest_state += 1;
-                        node_start = highest_state;
-                    } else {
-                        highest_state += 1;
-                        node_start = highest_state;
-                        if let (true, rule_set) = wordnode.is_e_node_get_rules() {
-                            atomic_rules = rule_set;
-                            regex_to_state.insert(regex_to_state_key.clone(), (node_start, node_start));
-                            continue;
-                        }
-                        if wordnode.kleene_star {
-                            node_end = node_start;
-                        } else {
-                            highest_state += 1;
-                            node_end = highest_state;
-                        }
-                    }
-                }
-                regex_to_state.insert(regex_to_state_key.clone(), (node_start, node_end));
-
-                for (rules, wordnodeword_set) in wordnode.get_by_base_rules() {
-                    let mut sub_states: Vec<State> = vec![node_start];
-                    let mut opt_penultimate_state: Option<State> = None;
-
-                    for wordnodeword in wordnodeword_set {
-                        let mut source: State = node_start;
-                        let mut target: State;
-                        let mut carried_rules: Rules = Vec::new();
-
-                        for index in 0..wordnodeword.len() {
-                            if index == sub_states.len() - 1 {
-                                if index == wordnodeword.len() - 1 {
-                                    sub_states.push(node_end);
-                                } else {
-                                    highest_state += 1;
-                                    sub_states.push(highest_state);
-                                }
-                            }
-
-                            if let WordNodeSymbol::Rules(word_rules) = &wordnodeword[index] {
-                                carried_rules = [word_rules.clone(), carried_rules].concat();
-                                target = sub_states[index+1];
-                                if target == node_end {
-                                    let entry = edges.entry(source).or_default().entry(Symbol::Epsilon).or_default();
-                                    
-                                    entry.insert((target, [rules.clone(), carried_rules].concat()));
-                                    carried_rules = Vec::new();
-                                }
-                            } else {
-                                let entry = edges.entry(source).or_default().entry(
-                                    match wordnodeword[index] {
-                                        WordNodeSymbol::Nonterminal(nt) => Symbol::Nonterminal(nt),
-                                        WordNodeSymbol::Terminal(t) => Symbol::Terminal(t),
-                                        WordNodeSymbol::Epsilon => Symbol::Epsilon,
-                                        _ => continue,
-                                    }
-                                ).or_default();
-
-                                target = sub_states[index+1];
-                                if target == node_end {
-                                    if let WordNodeSymbol::Nonterminal(_) = wordnodeword[index] {
-                                        let penultimate_state;
-                                        if let Some(state) = opt_penultimate_state {
-                                            penultimate_state = state;
-                                        } else {
-                                            highest_state += 1;
-                                            penultimate_state = highest_state;
-                                            opt_penultimate_state = Some(penultimate_state);
-                                        }
-                                        if carried_rules.len() > 0 {
-                                            entry.insert((penultimate_state, carried_rules));
-                                        } else {
-                                            entry.insert((penultimate_state, Vec::new()));
-                                        }
-                                        edges.entry(penultimate_state).or_default().entry(Symbol::Epsilon).or_default().insert((target, rules.clone()));
-                                    } else {
-                                        entry.insert((target, [rules.clone(), carried_rules].concat()));
-                                    }
-                                    carried_rules = Vec::new();
-                                }
-                                else if carried_rules.len() > 0 {
-                                    entry.insert((target, carried_rules));
-                                    carried_rules = Vec::new();
-                                } else {
-                                    entry.insert((target, Vec::new()));
-                                }
-                                source = sub_states[index+1];
-                            }
-                        }
-                    }
-                    states.extend(sub_states);
-                    if let Some(state) = opt_penultimate_state {
-                        states.insert(state);
-                    }
-                }
-
-
-            }
             accepting_states.insert(regex_to_state.get(&regex_to_state_key).unwrap().1);
             atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (regex_to_state.get(&regex_to_state_key).unwrap().0, atomic_rules));
         }
 
         FiniteStateAutomaton{states, accepting_states, start, edges, atomic_to_state}
+    }
+
+    pub fn node_to_states(node: Node) {
+        match node{
+            Node::Opt { nodes, kleene } => {
+
+            },
+            Node::Seq { nodes, kleene } => {
+
+            },
+            Node::Word { word, rules, kleene } => {
+
+            }
+        }
     }
 
     pub fn to_dot(&self, filename: &str) -> std::io::Result<()> {

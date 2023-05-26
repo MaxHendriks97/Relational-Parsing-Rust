@@ -34,13 +34,13 @@ impl Grammar {
                     match symbol {
                         Symbol::Epsilon => {},
                         Symbol::Terminal(t) => {
-                            if !terminals.contains(t) {
+                            if !terminals.contains(&t) {
                                 println!("{} not in terminals", t);
                                 panic!()
                             }
                         },
                         Symbol::Nonterminal(nt) => {
-                            if !nonterminals.contains(nt) {
+                            if !nonterminals.contains(&nt) {
                                 println!("{} not in nonterminals", nt);
                                 panic!()
                             }
