@@ -25,7 +25,7 @@ impl fmt::Display for RegexSymbol {
             RegexSymbol::Nonterminal(nt) => write!(f, "{}", nt),
             RegexSymbol::AtomicLanguage(nt, t) => write!(f, "[{}]^({})", nt, t),
             RegexSymbol::Nulled(rules) => write!(f, "{}", rules),
-            RegexSymbol::Epsilon => write!(f, "epsilon"),
+            RegexSymbol::Epsilon => write!(f, "e"),
         }
     }
 }
