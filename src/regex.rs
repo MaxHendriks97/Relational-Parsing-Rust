@@ -62,6 +62,25 @@ impl Regex {
             }
         }
 
+        let mut waiting_changing = true;
+
+        while waiting_changing {
+            waiting_changing = false;
+
+            let mut finishing_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
+
+            for (key, intermediate_atomic) in &waiting_atomics {
+                //TODO call resolve waiting atomic, then sort into finishing_atomics if finished.
+            }
+
+            for (key, intermediate_atomic) in finishing_atomics {
+                waiting_atomics.remove(&key);
+                finished_atomics.insert(key, intermediate_atomic);
+            }
+
+        }
+
+
         //TODO Resolve waiting atomic
 
         let mut res: Regex = Regex(HashMap::new());
