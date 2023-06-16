@@ -15,7 +15,7 @@ impl fmt::Display for GrammarRules {
         for (nt, rules) in self.0.iter() {
             write!(f, "{} -> ", nt)?;
             let mut peekable = rules.iter().peekable();
-            for rule in peekable.next() {
+            while let Some(rule) = peekable.next() {
                 write!(f, "{}", rule)?;
                 if peekable.peek().is_some() {
                     write!(f, " | ")?;
@@ -131,5 +131,32 @@ impl Grammar {
                 }
             }
         }
+    }
+}
+
+impl fmt::Display for Grammar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "terminals: ")?;
+        let mut peekable = self.terminals.iter().peekable();
+        while let Some(terminal) = peekable.next() {
+            write!(f, "{}", terminal)?;
+            if peekable.peek().is_some() {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "\n")?;
+        write!(f, "nonterminals: ")?;
+        let mut peekable = self.nonterminals.iter().peekable();
+        while let Some(nonterminal) = peekable.next() {
+            write!(f, "{}", nonterminal)?;
+            if peekable.peek().is_some() {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "\n")?;
+        write!(f, "start: {}\n", self.start)?;
+        write!(f, "{}", self.rules)?;
+        // write!(f, "{}", self.finite_state_automaton)?;
+        Ok(())
     }
 }
