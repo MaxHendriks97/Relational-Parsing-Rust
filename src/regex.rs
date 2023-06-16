@@ -55,7 +55,6 @@ impl Regex {
                 continue;
             }
             if !intermediate_atomic.different_atomic.is_empty() {
-                //TODO Implement waiting atomic into recursive atomic
                 waiting_atomics.insert(key.clone(), intermediate_atomic.clone());
             } else {
                 finished_atomics.insert(key.clone(), intermediate_atomic.clone());
@@ -67,12 +66,23 @@ impl Regex {
         while waiting_changing {
             waiting_changing = false;
 
+            let waiting_copy = waiting_atomics.clone();
+
             let mut finishing_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
+            let mut atomics_to_remove: Vec<(Nonterminal, Terminal)> = Vec::new();
 
             for (key, intermediate_atomic) in &mut waiting_atomics {
-                if intermediate_atomic.try_finish(&finished_atomics) {
-                    finishing_atomics.insert(key.clone(), intermediate_atomic.clone());
-                    waiting_changing = true;
+                match intermediate_atomic.try_finish(&finished_atomics, &waiting_copy) {
+                    1 => {
+                        finishing_atomics.insert(key.clone(), intermediate_atomic.clone());
+                        waiting_changing = true;
+                    },
+                    0 => continue,
+                    -1 => {
+                        atomics_to_remove.push(key.clone());
+                        waiting_changing = true;
+                    },
+                    _ => unreachable!(),
                 }
             }
 
@@ -81,12 +91,34 @@ impl Regex {
                 finished_atomics.insert(key, intermediate_atomic);
             }
 
+            for key in atomics_to_remove {
+                waiting_atomics.remove(&key);
+            }
+
+        }
+
+        if !waiting_atomics.is_empty() {
+            unimplemented!("There are still waiting atomics: {:?}, there must be a circular dependency\nFinished atomics: {:?}", waiting_atomics, finished_atomics.keys());
         }
 
         let mut res: Regex = Regex(HashMap::new());
+        let mut res_changing = true;
 
-        for (key, atomic) in finished_atomics {
-            res.0.insert(key.clone(), IntermediateAtomic::atomic_to_node(atomic));
+        while res_changing {
+            res_changing = false;
+
+            let mut converted_atomics: Vec<(Nonterminal, Terminal)> = Vec::new();
+            for (key, atomic) in finished_atomics.iter() {
+                if let Some(node) = IntermediateAtomic::atomic_to_node(atomic.clone(), &finished_atomics, &res.0) {
+                    res.0.insert(key.clone(), node);
+                    converted_atomics.push(key.clone());
+                    res_changing = true
+                }
+            }
+
+            for key in converted_atomics {
+                finished_atomics.remove(&key);
+            }
         }
 
         res
@@ -259,8 +291,9 @@ impl IntermediateAtomic {
         }
     }
 
-    pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> bool {
-        let mut finished = true;
+    // Returns 1 if the atomic is finished, 0 if it is not finished, and -1 if it is not finished and cannot be finished
+    pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>, waiting_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> isize {
+        let mut finished = 1;
 
         for regex_word_rule in self.different_atomic.iter() {
             let regex_word = regex_word_rule.word();
@@ -278,8 +311,10 @@ impl IntermediateAtomic {
 
                             self.direct.insert(RegexWordRule::new(new_regex_word, new_regex_rules));
                         }
+                    } else if let Some(_) = waiting_atomics.get(&(*nt, *t)) {
+                        finished = 0
                     } else {
-                        finished = false;
+                        finished = -1;
                     }
                 },
                 _ => panic!("First symbol should be an atomic language: {:?}", first_symbol),
@@ -289,12 +324,22 @@ impl IntermediateAtomic {
         finished
     }
 
-    fn atomic_to_node(atomic: IntermediateAtomic) -> Node {
-        if !atomic.different_atomic.is_empty() {
-            panic!("Different_atomic should be empty: {:?}", atomic);
-        }
-
-        if let Some(direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
+    fn atomic_to_node(atomic: IntermediateAtomic, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>, finished_nodes: &HashMap<(Nonterminal, Terminal), Node>) -> Option<Node> {
+        if let Some(mut direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
+            for regex_word_rule in atomic.different_atomic.iter() {
+                let regex_word = regex_word_rule.word();
+                let first_symbol = regex_word.first();
+                match first_symbol {
+                    RegexSymbol::AtomicLanguage(nt, t) => {
+                        if let Some(finished_node) = finished_nodes.get(&(*nt, *t)) {
+                            direct_node.add_opt(finished_node.clone());
+                        } else {
+                            return None;
+                        }
+                    },
+                    _ => panic!("First symbol should be an atomic language: {:?}", first_symbol)
+                }
+            }
             if let Some(recursive_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.recursive, true) {
                 // We have a recursive node, return a sequence with the direct and recursive node, recursive having kleene set to true
                 let new_recursive = match recursive_node {
@@ -302,10 +347,10 @@ impl IntermediateAtomic {
                     Node::Word { word, rules, ..} => Node::Word { word, rules, kleene: true },
                     Node::Seq { .. } => panic!(), // recursive_node cannot be a sequence
                 };
-                Node::Seq { nodes: vec![direct_node, new_recursive], kleene: false }
+                Some(Node::Seq { nodes: vec![direct_node, new_recursive], kleene: false })
             } else {
                 // Return only direct node
-                direct_node
+                Some(direct_node)
             }
         } else {
             panic!("Could not make direct node with atomic: {:?}", atomic)
@@ -489,6 +534,19 @@ impl Node {
             }
         }
         Some(rules_set)
+    }
+
+    fn add_opt(&mut self, other: Node) {
+        match self {
+            Node::Opt { nodes, .. } => {
+                nodes.insert(other);
+            },
+            _ => {
+                let mut nodes: BTreeSet<Node> = BTreeSet::new();
+                nodes.insert(other);
+                *self = Node::new_opt(nodes, false);
+            }
+        }
     }
 
     fn word_get_nulling_rules(word: &RegexWord) -> Option<Rules> {
