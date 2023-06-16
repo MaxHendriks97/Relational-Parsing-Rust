@@ -259,6 +259,12 @@ impl IntermediateAtomic {
         }
     }
 
+    pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> bool {
+
+        unimplemented!()
+        self.different_atomic.is_empty()
+    }
+
     fn atomic_to_node(atomic: IntermediateAtomic) -> Node {
         if !atomic.different_atomic.is_empty() {
             panic!("Different_atomic should be empty: {:?}", atomic);
