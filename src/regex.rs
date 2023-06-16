@@ -69,7 +69,7 @@ impl Regex {
 
             let mut finishing_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
 
-            for (key, intermediate_atomic) in &waiting_atomics {
+            for (key, intermediate_atomic) in &mut waiting_atomics {
                 if intermediate_atomic.try_finish(&finished_atomics) {
                     finishing_atomics.insert(key.clone(), intermediate_atomic.clone());
                     waiting_changing = true;
@@ -260,9 +260,33 @@ impl IntermediateAtomic {
     }
 
     pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> bool {
+        let mut finished = true;
 
-        unimplemented!()
-        self.different_atomic.is_empty()
+        for regex_word_rule in self.different_atomic.iter() {
+            let regex_word = regex_word_rule.word();
+            let regex_rules = regex_word_rule.rules();
+            let first_symbol = regex_word.first();
+
+            match first_symbol {
+                RegexSymbol::AtomicLanguage(nt, t) => {
+                    if let Some(finished_atomic) = finished_atomics.get(&(*nt, *t)) {
+                        let finished_direct = finished_atomic.direct.clone();
+
+                        for finished_regex_word_rule in finished_direct.iter() {
+                            let new_regex_word = regex_word.not_first().concat(&finished_regex_word_rule.word());
+                            let new_regex_rules = regex_rules.clone().concat(&finished_regex_word_rule.rules());
+
+                            self.direct.insert(RegexWordRule::new(new_regex_word, new_regex_rules));
+                        }
+                    } else {
+                        finished = false;
+                    }
+                },
+                _ => panic!("First symbol should be an atomic language: {:?}", first_symbol),
+            }
+        }
+
+        finished
     }
 
     fn atomic_to_node(atomic: IntermediateAtomic) -> Node {
@@ -293,9 +317,9 @@ impl IntermediateAtomic {
 
         for regex_word_rule in set.iter() {
             if rec {
-                nodes.insert(Node::Word{word: regex_word_rule.regex_word().not_first(), rules: regex_word_rule.rules().clone(), kleene: false});
+                nodes.insert(Node::Word{word: regex_word_rule.word().not_first(), rules: regex_word_rule.rules().clone(), kleene: false});
             } else {
-                nodes.insert(Node::Word{word: regex_word_rule.regex_word().clone(), rules: regex_word_rule.rules().clone(), kleene: false});
+                nodes.insert(Node::Word{word: regex_word_rule.word().clone(), rules: regex_word_rule.rules().clone(), kleene: false});
             }
         }
 

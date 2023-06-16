@@ -79,6 +79,16 @@ impl RegexWord {
         self.0[index] = regex_symbol;
     }
 
+    pub fn extend(&mut self, other: RegexWord) {
+        self.0.extend(other.0);
+    }
+
+    pub fn concat(&self, other: &RegexWord) -> RegexWord {
+        let mut regex_word = self.clone();
+        regex_word.extend(other.clone());
+        regex_word
+    }
+
     pub fn push(&mut self, regex_symbol: RegexSymbol) {
         self.0.push(regex_symbol);
     }
@@ -112,7 +122,7 @@ pub struct RegexWordRule(RegexWord, Rules);
 
 impl fmt::Display for RegexWordRule {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({} -> {})", self.regex_word(), self.rules())
+        write!(f, "({} -> {})", self.word(), self.rules())
     }
 }
 
@@ -121,7 +131,7 @@ impl RegexWordRule {
         RegexWordRule(regex_word, rules)
     }
 
-    pub fn regex_word(&self) -> &RegexWord {
+    pub fn word(&self) -> &RegexWord {
         &self.0
     }
 
