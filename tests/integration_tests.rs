@@ -1,7 +1,3 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs::File;
-use std::io::{prelude::*, BufReader};
-
 // use relational_parsing::{self, Grammar, parse_count_memo};
 // use crate::relational_parsing::{Regex, 
 //     Memoize,
@@ -11,11 +7,8 @@ use std::io::{prelude::*, BufReader};
 
 use relational_parsing::{
     self,
-    Grammar,
-    Symbol,
-    Terminal,
-    Nonterminal,
-    Regex
+    Regex,
+    Node,
 };
 
 mod common;
@@ -25,17 +18,14 @@ fn rules_to_regex_rules_test() {
     let grammar = common::basic_relational_parsing_example_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::e_rule_relational_parsing_example_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::extra_e_rule_relational_parsing_example_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
     //for (_, regexnode) in reg.regex {
     //    for wordnode in regexnode.nodes {
     //        println!("{}", wordnode);
@@ -47,54 +37,45 @@ fn rules_to_regex_rules_test() {
     let grammar = common::three_rule_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::difficult_bottom_up_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::odd_number_of_a_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::direct_left_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::indirect_left_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::even_more_indirect_left_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::direct_right_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::indirect_right_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 
     let grammar = common::strange_recursive_grammar();
     let reg = Regex::new(&grammar.terminals, &grammar.rules);
     println!("{}", reg);
-    reg.print_with_rules();
 }
 
 //#[test]
 //fn regex_node_to_states_test() {
 //    let grammar = common::e_rule_relational_parsing_example_grammar();
 //    let regex = Regex::new(&grammar.terminals, &grammar.rules);
-//    if let RegexNode::Node(regex_node) = regex.regex.get(&('S', 'b')).unwrap() {
+//    if let Node(regex_node) = regex.get(&('S', 'b')).unwrap() {
 //        println!("{}", regex_node.nodes.get(1).unwrap());
 //        let mut regex_to_state: HashMap<VecDeque<RegexNode>, (State, State)> = HashMap::new();
 //        println!("{:?}", FiniteStateAutomaton::atomic_regex_to_states(regex_node.nodes.get(1).unwrap(), None, 0, &mut regex_to_state));
@@ -111,7 +92,7 @@ fn rules_to_regex_rules_test() {
 //    //println!("{:?}", Grammar::regex_node_to_states(regex.regex.get(&('S', 'a')).unwrap(), 1));
 //
 //}
-//
+
 //#[test]
 //fn build_fsa_test() {
 //    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();

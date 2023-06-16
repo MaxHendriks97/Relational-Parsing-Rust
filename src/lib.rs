@@ -2,6 +2,8 @@ mod word;
 pub use word::*;
 mod grammar;
 pub use grammar::*;
+mod regex_word;
+pub use regex_word::*;
 mod regex;
 pub use regex::*;
 mod finite_state_automaton;

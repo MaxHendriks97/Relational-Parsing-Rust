@@ -7,136 +7,455 @@ use std::collections::{HashSet, HashMap, VecDeque};
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
+use std::ops::Add;
 
-use crate::word::*;
+use crate::{word::*, GrammarRules, RegexSymbol};
 use crate::regex::*;
 
-pub type State = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct State(usize);
 
-#[derive(Debug)]
-pub struct FiniteStateAutomaton {
-    states: HashSet<State>,
-    accepting_states: HashSet<State>,
-    start: State,
-    edges: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>>,
-    atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)>,
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
-impl fmt::Display for FiniteStateAutomaton {
+impl Add<usize> for State {
+    type Output = State;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        State(self.0 + rhs)
+    }
+}
+
+impl State {
+    pub fn new(id: usize) -> State {
+        State(id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct States(HashSet<State>);
+
+impl fmt::Display for States {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "States: ")?;
-        for state in &self.states {
+        for state in &self.0 {
             write!(f, "{} ", state)?;
-        }
-        write!(f, "\nAccepting states: ")?;
-        for state in &self.accepting_states {
-            write!(f, "{} ", state)?;
-        }
-        write!(f, "\nStart state: {}\n", &self.start)?;
-        write!(f, "edges:\n")?;
-        for (state, edge_list) in &self.edges {
-            write!(f, "{}: ", state)?;
-            for (symbol, destinations) in edge_list {
-                for (state, _) in destinations {
-                    write!(f, "|to {} via {}| ", state, symbol)?;
-                }
-            }
-            write!(f, "\n")?;
-        }
-        write!(f, "Edge to rules:\n")?;
-        for (state, edge_list) in &self.edges {
-            for (symbol, destinations) in edge_list {
-                for (_, rules) in destinations {
-                    write!(f, "{}: {}: ", state, symbol)?;
-                    for (nonterminal, rule) in rules {
-                        write!(f, "[{} -> ", nonterminal)?;
-                        for symbol in rule {
-                            write!(f, "{}", symbol)?;
-                        }
-                        write!(f, "] ")?;
-                    }
-                    write!(f, "\n")?;
-                }
-            }
-        }
-        write!(f, "Atomic to state:\n")?;
-        for ((symbol, terminal), (state, rule_set)) in &self.atomic_to_state {
-            write!(f, "[{}]^({}) {} ", symbol, terminal, state)?;
-            for rules in rule_set {
-                write!(f, "| ")?;
-                for (nonterminal, rule) in rules {
-                    write!(f, "[{} -> ", nonterminal)?;
-                    for symbol in rule {
-                        write!(f, "{}", symbol)?;
-                    }
-                    write!(f, "] ")?;
-                }
-                write!(f, "|")?;
-            }
-            write!(f, "\n")?;
         }
         Ok(())
     }
 }
 
-impl FiniteStateAutomaton {
-    pub fn build_fsa(terminals: &HashSet<Terminal>, start_nt: Nonterminal, rules: &HashMap<Nonterminal, HashSet<Word>>) -> FiniteStateAutomaton {
-        let start: State = 0;
-        let epsilon: State = 1;
-        let mut highest_state: State = 1;
-        let mut states: HashSet<State> = HashSet::from([start, epsilon]);
-        let mut accepting_states: HashSet<State> = HashSet::from([epsilon]);
-        let mut edges: HashMap<State, HashMap<Symbol, HashSet<(State, Rules)>>> = HashMap::new();
-        let mut atomic_to_state: HashMap<(Symbol, Terminal), (State, HashSet<Rules>)> = HashMap::new();
+impl States {
+    pub fn new() -> States {
+        States(HashSet::new())
+    }
 
-        edges.insert(start, HashMap::from([(Symbol::Nonterminal(start_nt), HashSet::from([(epsilon, Vec::new())]))]));
+    pub fn from(states: Vec<State>) -> States {
+        States(HashSet::from_iter(states))
+    }
+
+    pub fn insert(&mut self, state: State) {
+        self.0.insert(state);
+    }
+
+    pub fn contains(&self, state: &State) -> bool {
+        self.0.contains(state)
+    }
+
+    pub fn iter(&self) -> std::collections::hash_set::Iter<State> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Edge {
+    pub symbol: Symbol,
+    pub destination: State,
+    pub opt_rules: Option<Rules>,
+}
+
+impl fmt::Display for Edge {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.opt_rules.is_some() {
+            write!(f, "{} -> {} using {}", self.symbol, self.destination, self.opt_rules.clone().unwrap())
+        } else {
+            write!(f, "{} -> {}", self.symbol, self.destination)
+        }
+    }
+}
+
+impl Edge {
+    pub fn new(symbol: Symbol, destination: State, opt_rules: Option<Rules>) -> Edge {
+        Edge {
+            symbol,
+            destination,
+            opt_rules,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct EdgeSet(HashSet<Edge>);
+
+impl fmt::Display for EdgeSet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{")?;
+        for edge in &self.0 {
+            write!(f, "{} ", edge)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl EdgeSet {
+    pub fn new() -> EdgeSet {
+        EdgeSet(HashSet::new())
+    }
+
+    pub fn add(&mut self, edge: Edge) {
+        self.0.insert(edge);
+    }
+
+    pub fn insert(&mut self, symbol: Symbol, destination: State, opt_rules: Option<Rules>) {
+        self.0.insert(Edge::new(symbol, destination, opt_rules));
+    }
+
+    pub fn contains(&self, edge: &Edge) -> bool {
+        self.0.contains(edge)
+    }
+
+    pub fn get_edges(&self, symbol: &Symbol) -> Vec<Edge> {
+        self.0.iter().filter(|edge| edge.symbol == *symbol).cloned().collect()
+    }
+
+    pub fn iter(&self) -> std::collections::hash_set::Iter<Edge> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug)]
+pub struct Edges(HashMap<State, EdgeSet>);
+
+impl fmt::Display for Edges {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (state, edge_set) in &self.0 {
+            write!(f, "{}: {}\n", state, edge_set)?;
+        }
+        Ok(())
+    }
+}
+
+impl Edges {
+    pub fn new() -> Edges {
+        Edges(HashMap::new())
+    }
+
+    pub fn add(&mut self, state: State, edge: Edge) {
+        self.0.entry(state).or_insert(EdgeSet::new()).add(edge);
+    }
+
+    pub fn insert(&mut self, state: State, symbol: Symbol, destination: State, opt_rules: Option<Rules>) {
+        self.0.entry(state).or_insert(EdgeSet::new()).insert(symbol, destination, opt_rules);
+    }
+
+    pub fn get(&self, state: &State) -> Option<&EdgeSet> {
+        self.0.get(state)
+    }
+
+    pub fn contains(&self, state: &State, edge: &Edge) -> bool {
+        if let Some(edge_set) = self.0.get(state) {
+            edge_set.contains(edge)
+        } else {
+            false
+        }
+    }
+
+    pub fn has_edge(&self, state: &State) -> bool {
+        self.0.contains_key(state)
+    }
+
+    pub fn iter(&self) -> std::collections::hash_map::Iter<State, EdgeSet> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Atomic {
+    pub symbol: Symbol,
+    pub terminal: Terminal
+}
+
+impl fmt::Display for Atomic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}]^({})", self.symbol, self.terminal)
+    }
+}
+
+impl Atomic {
+    pub fn new(symbol: Symbol, terminal: Terminal) -> Atomic {
+        Atomic{symbol, terminal}
+    }
+}
+
+#[derive(Debug)]
+pub struct AtomicToState(HashMap<Atomic, (State, RulesSet)>);
+
+impl fmt::Display for AtomicToState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (atomic, (state, rules_set)) in &self.0 {
+            write!(f, "{}: {} -> {}\n", atomic, state, rules_set)?;
+        }
+        Ok(())
+    }
+}
+
+impl AtomicToState {
+    pub fn new() -> AtomicToState {
+        AtomicToState(HashMap::new())
+    }
+
+    pub fn add(&mut self, atomic: Atomic, state: State, rules_set: RulesSet) {
+        self.0.insert(atomic, (state, rules_set));
+    }
+
+    pub fn insert_rule(&mut self, atomic: Atomic, state: State, rule: Rule) {
+        self.0.entry(atomic).or_insert((state, RulesSet::new())).1.insert_rule(rule);
+    }
+
+    pub fn get(&self, atomic: &Atomic) -> Option<&(State, RulesSet)> {
+        self.0.get(atomic)
+    }
+
+    pub fn iter(&self) -> std::collections::hash_map::Iter<Atomic, (State, RulesSet)> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug)]
+pub struct FiniteStateAutomaton {
+    states: States,
+    accepting_states: States,
+    start: State,
+    edges: Edges,
+    atomic_to_state: AtomicToState,
+}
+
+impl fmt::Display for FiniteStateAutomaton {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "States: {}\nAccepting States: {}\nStart: {}\nEdges:\n{}\nAtomic to State:\n{}", self.states, self.accepting_states, self.start, self.edges, self.atomic_to_state)
+    }
+}
+
+impl FiniteStateAutomaton {
+    pub fn build_fsa(terminals: &HashSet<Terminal>, start_nt: Nonterminal, rules: &GrammarRules) -> FiniteStateAutomaton {
+        let start: State = State::new(0);
+        let epsilon: State = State::new(1);
+        let mut highest_state: State = epsilon;
+        let mut states: States = States::from(vec![start, epsilon]);
+        let mut accepting_states: States = States::from(vec![epsilon]);
+        let mut edges: Edges = Edges::new();
+        let mut atomic_to_state: AtomicToState = AtomicToState::new();
+
+        edges.insert(start, Symbol::Nonterminal(start_nt), epsilon, Some(Rules::from_single(start_nt, Word::from_single(Symbol::Epsilon))));
 
         // If starting symbol can be nulled, make starting state accepting. Does not actually parse correctly at the moment, unfortunately.
-        if rules.get(&start_nt).unwrap().contains(&vec![Symbol::Epsilon]) {
-            highest_state += 1;
+        if rules.nt_has_word(start_nt, &Word::from_single(Symbol::Epsilon)) {
+            highest_state = highest_state + 1;
             states.insert(highest_state);
-            edges.entry(start).or_default().insert(Symbol::Epsilon, HashSet::from([(highest_state, Vec::from([(start_nt, Vec::from([Symbol::Epsilon]))]))]));
+            edges.insert(start, Symbol::Epsilon, highest_state, Some(Rules::from_single(start_nt, Word::from_single(Symbol::Epsilon))));
             accepting_states.insert(highest_state);
         }
 
         // add terminal derivations to atomic_to_state
         for terminal in terminals {
-            atomic_to_state.insert((Symbol::Terminal(*terminal), *terminal), (epsilon, HashSet::new()));
+            atomic_to_state.add(Atomic::new(Symbol::Terminal(*terminal), *terminal), epsilon, RulesSet::new());
         }
 
         let Regex(atomic_regex): Regex = Regex::new(terminals, rules);
-        let mut regex_to_state: HashMap<VecDeque<Node>, (State, State)> = HashMap::new();
 
         // For every atomic language, build a FSA or (partially) hook into an existing one
         for ((nonterminal, terminal), node) in atomic_regex {
             // If the regex is null, add the atomic language to the accepting node
             if let Some(rules) = node.get_nulling_rules() {
-                atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (epsilon, rules));
+                atomic_to_state.add(Atomic::new(Symbol::Nonterminal(nonterminal), terminal), epsilon, rules);
                 continue;
             }
 
-            let mut node_queue: Vec<Node> = Vec::from([node]);
-            let mut regex_to_state_key: VecDeque<Node> = VecDeque::new();
-            let mut atomic_rules: HashSet<Rules> = HashSet::new();
+            // If the regex is not null, build a FSA for it
+            let (starting_state, new_highest_state) = FiniteStateAutomaton::node_to_states(&node, start, None, &mut states, highest_state, &mut edges);
+            highest_state = new_highest_state;
 
-            let mut node_end: State;
-            accepting_states.insert(regex_to_state.get(&regex_to_state_key).unwrap().1);
-            atomic_to_state.insert((Symbol::Nonterminal(nonterminal), terminal), (regex_to_state.get(&regex_to_state_key).unwrap().0, atomic_rules));
+            atomic_to_state.add(Atomic::new(Symbol::Nonterminal(nonterminal), terminal), starting_state, RulesSet::new());
         }
 
         FiniteStateAutomaton{states, accepting_states, start, edges, atomic_to_state}
     }
 
-    pub fn node_to_states(node: Node) {
+    // Returns, ending state, highest state
+    pub fn node_to_states(node: &Node, starting_state: State, ending_state: Option<State>, states: &mut States, highest_state: State, edges: &mut Edges) -> (State, State) {
+        let mut curr_highest_state: State = highest_state;
         match node{
             Node::Opt { nodes, kleene } => {
-
+                if *kleene {
+                    // Ending state is starting state
+                    for node in nodes {
+                        (_, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, starting_state, Some(starting_state), states, curr_highest_state, edges);
+                    }
+                    return (starting_state, curr_highest_state);
+                } else {
+                    // Ending state is end_state.
+                    // This may be null in the first iteration, so it may create a new state to be the ending state.
+                    // Because all opt nodes should end at the same ending state, we set the ending state of every new loop to be the ending state of the previous loop.
+                    let mut curr_ending_state: Option<State> = ending_state;
+                    for node in nodes {
+                        let new_ending_state: State;
+                        (new_ending_state, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, starting_state, curr_ending_state, states, curr_highest_state, edges);
+                        curr_ending_state = Some(new_ending_state);
+                    }
+                    (curr_ending_state.unwrap(), curr_highest_state)
+                }
             },
             Node::Seq { nodes, kleene } => {
-
+                let mut curr_starting_state: State = starting_state;
+                if *kleene {
+                    // Ending state is None until last iteration, then ending state is starting_state
+                    // curr_starting_state is the ending state of the previous iteration
+                    let mut peekable_nodes = nodes.iter().peekable();
+                    while let Some(node) = peekable_nodes.next() {
+                        if peekable_nodes.peek().is_some() {
+                            let new_starting_state: State;
+                            (new_starting_state, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, states, curr_highest_state, edges);
+                            curr_starting_state = new_starting_state;
+                        } else {
+                            (_, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, Some(starting_state), states, curr_highest_state, edges);
+                        }
+                    }
+                    (starting_state, curr_highest_state)
+                } else {
+                    // Ending state is None until last iteration, then ending state is end_state.
+                    // curr_starting_state is the ending state of the previous iteration
+                    let mut last_ending_state: State = starting_state;
+                    let mut peekable_nodes = nodes.iter().peekable();
+                    while let Some(node) = peekable_nodes.next() {
+                        if peekable_nodes.peek().is_some() {
+                            let new_starting_state: State;
+                            (new_starting_state, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, states, curr_highest_state, edges);
+                            curr_starting_state = new_starting_state;
+                        } else {
+                            (last_ending_state, curr_highest_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, ending_state, states, curr_highest_state, edges);
+                        }
+                    }
+                    (last_ending_state, curr_highest_state)
+                }
             },
             Node::Word { word, rules, kleene } => {
+                let mut curr_state: State = starting_state;
+                let mut peekable_word = word.iter().peekable();
+                let mut collected_rules: Rules = Rules::new();
+                while let Some(symbol) = peekable_word.next() {
+                    if peekable_word.peek().is_some() {
+                        match symbol {
+                            RegexSymbol::AtomicLanguage(_, _) => panic!("Atomic language should not be in word"),
+                            RegexSymbol::Nulled(nulled_rules) => collected_rules.extend(nulled_rules.clone()),
+                            RegexSymbol::Nonterminal(nt) => {
+                                let new_state = curr_highest_state + 1;
+                                curr_highest_state = new_state;
+                                states.insert(new_state);
+                                if collected_rules.is_empty() {
+                                    edges.insert(curr_state, Symbol::Nonterminal(*nt), new_state, None);
+                                } else {
+                                    edges.insert(curr_state, Symbol::Nonterminal(*nt), new_state, Some(collected_rules));
+                                    collected_rules = Rules::new();
+                                }
+                                curr_state = new_state;
+                            },
+                            RegexSymbol::Terminal(t) => {
+                                let new_state = curr_highest_state + 1;
+                                curr_highest_state = new_state;
+                                states.insert(new_state);
+                                if collected_rules.is_empty() {
+                                    edges.insert(curr_state, Symbol::Terminal(*t), new_state, None);
+                                } else {
+                                    edges.insert(curr_state, Symbol::Terminal(*t), new_state, Some(collected_rules));
+                                    collected_rules = Rules::new();
+                                }
+                                curr_state = new_state;
+                            },
+                            RegexSymbol::Epsilon => panic!("Epsilon should not be followed by other symbols"),
+                        }
+                    } else {
+                        match symbol {
+                            RegexSymbol::AtomicLanguage(_, _) => panic!("Atomic language should not be in word"),
+                            RegexSymbol::Nulled(nulled_rules) => {
+                                collected_rules.extend(nulled_rules.clone());
+                                collected_rules.extend(rules.clone());
+                                if *kleene {
+                                    edges.insert(curr_state, Symbol::Epsilon, starting_state, Some(collected_rules));
+                                    curr_state = starting_state;
+                                } else {
+                                    edges.insert(curr_state, Symbol::Epsilon, ending_state.or_else(|| {
+                                        // If ending state is None, then we need to create a new state
+                                        let new_state = curr_highest_state + 1;
+                                        curr_highest_state = new_state;
+                                        states.insert(new_state);
+                                        curr_state = new_state;
+                                        Some(curr_state)
+                                    }).unwrap(), Some(collected_rules));
+                                }
+                                collected_rules = Rules::new();
+                            },
+                            RegexSymbol::Nonterminal(nt) => {
+                                // First create an edge to a new state for the nonterminal
+                                let new_state = curr_highest_state + 1;
+                                curr_highest_state = new_state;
+                                states.insert(new_state);
+                                if collected_rules.is_empty() {
+                                    edges.insert(curr_state, Symbol::Nonterminal(*nt), new_state, None);
+                                } else {
+                                    edges.insert(curr_state, Symbol::Nonterminal(*nt), new_state, Some(collected_rules));
+                                    collected_rules = Rules::new();
+                                }
+                                curr_state = new_state;
 
+                                // Then create an edge from the new state to the ending state with Epsilon and rules
+                                if *kleene {
+                                    edges.insert(curr_state, Symbol::Epsilon, starting_state, Some(rules.clone()));
+                                    curr_state = starting_state;
+                                } else {
+                                    edges.insert(curr_state, Symbol::Epsilon, ending_state.or_else(|| {
+                                        // If ending state is None, then we need to create a new state
+                                        let new_state = curr_highest_state + 1;
+                                        curr_highest_state = new_state;
+                                        states.insert(new_state);
+                                        curr_state = new_state;
+                                        Some(curr_state)
+                                    }).unwrap(), Some(rules.clone()));
+                                }
+                            },
+                            RegexSymbol::Terminal(t) => {
+                                collected_rules.extend(rules.clone());
+                                if *kleene {
+                                    edges.insert(curr_state, Symbol::Terminal(*t), starting_state, Some(collected_rules));
+                                    curr_state = starting_state;
+                                } else {
+                                    edges.insert(curr_state, Symbol::Terminal(*t), ending_state.or_else(|| {
+                                        // If ending state is None, then we need to create a new state
+                                        let new_state = curr_highest_state + 1;
+                                        curr_highest_state = new_state;
+                                        states.insert(new_state);
+                                        curr_state = new_state;
+                                        Some(curr_state)
+                                    }).unwrap(), Some(collected_rules));
+                                }
+                                collected_rules = Rules::new();
+                            },
+                            RegexSymbol::Epsilon => continue,
+                        }
+                    }
+                }
+                (curr_state, curr_highest_state)
             }
         }
     }
@@ -145,30 +464,26 @@ impl FiniteStateAutomaton {
         let mut file = File::create(format!("{}.dot", filename))?;
         write!(file, "digraph G {{\n")?;
         let mut state_to_shape: HashMap<State, &str> = HashMap::new();
-        for state in &self.states {
+        for state in self.states.iter() {
             if self.accepting_states.contains(state) {
                 state_to_shape.insert(*state, "doublecircle");
             } else {
                 state_to_shape.insert(*state, "circle");
             }
         }
-        for state in &self.states {
+        for state in self.states.iter() {
             write!(file, "{} [ shape={} ]\n", state, state_to_shape.get(state).unwrap())?;
         }
-        for ((symbol, terminal), (state, rule_set)) in &self.atomic_to_state {
-            match symbol {
+        for (atomic, (state, rule_set)) in self.atomic_to_state.iter() {
+            match atomic.symbol {
                 Symbol::Nonterminal(nonterm) => {
-                    write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}", nonterm, terminal, nonterm, terminal, state)?;
+                    write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}", nonterm, atomic.terminal, nonterm, atomic.terminal, state)?;
                     if rule_set.len() > 0 {
                         write!(file, "[ label=\"")?;
-                        for rules in rule_set {
+                        for rules in rule_set.iter() {
                             write!(file, "(")?;
-                            for rule in rules {
-                                write!(file, "[{} -> ", &rule.0)?;
-                                for symbol in &rule.1 {
-                                    write!(file, "{}", symbol)?;
-                                }
-                                write!(file, "]")?;
+                            for rule in rules.iter() {
+                                write!(file, "{}", rule)?;
                             }
                             write!(file, ")")?;
                         }
@@ -176,42 +491,40 @@ impl FiniteStateAutomaton {
                     }
                     write!(file, "\n")?;
                 },
-                Symbol::Terminal(term) => write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}\n", term, terminal, term, terminal, state)?,
+                Symbol::Terminal(term) => write!(file, "\"[{}]^({})\" [ shape=rectangle ]\n\"[{}]^({})\" -> {}\n", term, atomic.terminal, term, atomic.terminal, state)?,
                 _ => {},
             }
         }
-        for (source, edge_list) in &self.edges {
-            for (symbol, destinations) in edge_list {
-                for (dest, rules) in destinations {
-                    match symbol {
-                        Symbol::Epsilon => write!(file, "{} -> {} [ label=\"e ", source, dest)?,
-                        Symbol::Nonterminal(nonterminal) => write!(file, "{} -> {} [ label=\"{} ", source, dest, nonterminal)?,
-                        Symbol::Terminal(terminal) => write!(file, "{} -> {} [ label=\"{} ", source, dest, terminal)?,
-                    }
-                    for rule in rules {
-                        write!(file, "[{} -> ", &rule.0)?;
-                        for symbol in &rule.1 {
-                            write!(file, "{}", symbol)?;
-                        }
-                        write!(file, "] ")?;
-                    }
-                    write!(file, "\" ]\n")?;
+        for (source, edge_set) in self.edges.iter() {
+            for edge in edge_set.iter() {
+                match edge.symbol {
+                    Symbol::Epsilon => write!(file, "{} -> {} [ label=\"e ", source, edge.destination)?,
+                    Symbol::Nonterminal(nonterminal) => write!(file, "{} -> {} [ label=\"{} ", source, edge.destination, nonterminal)?,
+                    Symbol::Terminal(terminal) => write!(file, "{} -> {} [ label=\"{} ", source, edge.destination, terminal)?,
                 }
+                if let Some(rules) = &edge.opt_rules {
+                    write!(file, "{}", rules)?;
+                }
+                write!(file, "\" ]\n")?;
             }
         }
         write!(file, "}}")
     }
 
-    pub fn simulate(&self, curr_state: &State, symbol: Symbol) -> Option<HashSet<(&State, &Rules, bool)>> {
-        self.edges.get(&curr_state)?
-            .get(&symbol)
-            .map(|destinations| {
-                let mut res: HashSet<(&State, &Rules, bool)> = HashSet::new();
-                for (dest, rules) in destinations {
-                    res.insert((dest, rules, self.is_accepting(dest)));
+    pub fn simulate(&self, curr_state: &State, symbol: Symbol) -> Option<HashSet<(&State, &Option<Rules>, bool)>> {
+        let mut res: HashSet<(&State, &Option<Rules>, bool)> = HashSet::new();
+        if let Some(edges) = self.edges.get(&curr_state) {
+            for edge in edges.iter() {
+                if edge.symbol == symbol {
+                    res.insert((&edge.destination, &edge.opt_rules, self.is_accepting(&edge.destination)));
                 }
-                res
-            })
+            }
+        }
+        if res.is_empty() {
+            None
+        } else {
+            Some(res)
+        }
     }
 
     pub fn is_accepting(&self, curr_state: &State) -> bool {
@@ -222,14 +535,101 @@ impl FiniteStateAutomaton {
         (self.start, self.is_accepting(&self.start))
     }
 
-    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<(&State, &HashSet<Rules>, bool)> {
-        self.atomic_to_state.get(&(symbol, terminal))
+    pub fn get_atomic(&self, symbol: Symbol, terminal: Terminal) -> Option<(&State, &RulesSet, bool)> {
+        self.atomic_to_state.get(&Atomic::new(symbol, terminal))
             .map(|(dest, rules_set)| (dest, rules_set, self.is_accepting(dest)))
     }
 
-    pub fn has_edge(&self, curr_state: &State) -> bool {
-        self.edges.get(curr_state)
-            .map_or(false, |trans_list| !trans_list.is_empty())
+    pub fn has_edge(&self, state: &State) -> bool {
+        self.edges.has_edge(state)
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use crate::RegexWord;
+
+    use super::*;
+
+    fn execute_node_to_states_test(node: Node) {
+        let mut states: States = States::new();
+        let mut edges: Edges = Edges::new();
+        let start_state: State = State::new(0);
+        states.insert(start_state);
+        FiniteStateAutomaton::node_to_states(&node, start_state, None, &mut states, start_state, &mut edges);
+        println!("{}\n{}", states, edges);
+
+    }
+
+    #[test]
+    fn test_node_to_states() {
+        let rules: Rules = Rules::new();
+
+        let only_term: RegexWord = RegexWord::new(vec![RegexSymbol::Terminal('a'), RegexSymbol::Terminal('b')]);
+        let end_nonterm: RegexWord = RegexWord::new(vec![RegexSymbol::Terminal('a'), RegexSymbol::Nonterminal('A')]);
+        let nulled: RegexWord = RegexWord::new(vec![RegexSymbol::Nulled(Rules::from_single('S', Word::from_single(Symbol::Epsilon))), RegexSymbol::Terminal('a')]);
+
+
+        // Test wordnode with only terminals
+        println!("Testing node: ({})", only_term);
+        let node: Node = Node::new_word(only_term.clone(), rules.clone(), false);
+        execute_node_to_states_test(node);
+
+        println!("Testing node: ({})*", only_term);
+        let node: Node = Node::new_word(only_term.clone(), rules.clone(), true);
+        execute_node_to_states_test(node);
+
+        // Test wordnode ending with nonterminal
+        println!("Testing node: ({})", end_nonterm);
+        let node: Node = Node::new_word(end_nonterm.clone(), rules.clone(), false);
+        execute_node_to_states_test(node);
+
+        println!("Testing word: ({})*", end_nonterm);
+        let node: Node = Node::new_word(end_nonterm.clone(), rules.clone(), true);
+        execute_node_to_states_test(node);
+
+        // Test wordnode with nulled
+        println!("Testing node: ({})", nulled);
+        let node: Node = Node::new_word(nulled.clone(), rules.clone(), false);
+        execute_node_to_states_test(node);
+
+        // Test sequence node
+        println!("Testing sequence: (({})({}))", only_term, only_term);
+        let word_node1: Node = Node::new_word(only_term.clone(), rules.clone(), false);
+        let word_node2: Node = Node::new_word(end_nonterm.clone(), rules.clone(), false);
+        let node: Node = Node::new_seq(vec![word_node1.clone(), word_node1.clone()], false);
+        execute_node_to_states_test(node);
+
+        println!("Testing sequence: (({})({}))*", only_term, only_term);
+        let node: Node = Node::new_seq(vec![word_node1.clone(), word_node1.clone()], true);
+        execute_node_to_states_test(node);
+
+        println!("Testing sequence: (({})({}))", only_term, end_nonterm);
+        let node: Node = Node::new_seq(vec![word_node1.clone(), word_node2.clone()], false);
+        execute_node_to_states_test(node);
+
+        println!("Testing sequence: (({})({}))*", only_term, end_nonterm);
+        let node: Node = Node::new_seq(vec![word_node1.clone(), word_node2.clone()], true);
+        execute_node_to_states_test(node);
+
+        // Test choice node
+        println!("Testing choice: (({})+({}))", only_term, only_term);
+        let node: Node = Node::new_opt(BTreeSet::from([word_node1.clone(), word_node1.clone()]), false);
+        execute_node_to_states_test(node);
+
+        println!("Testing choice: (({})+({}))*", only_term, only_term);
+        let node: Node = Node::new_opt(BTreeSet::from([word_node1.clone(), word_node1.clone()]), true);
+        execute_node_to_states_test(node);
+
+        println!("Testing choice: (({})+({}))", only_term, end_nonterm);
+        let node: Node = Node::new_opt(BTreeSet::from([word_node1.clone(), word_node2.clone()]), false);
+        execute_node_to_states_test(node);
+
+        println!("Testing choice: (({})+({}))*", only_term, end_nonterm);
+        let node: Node = Node::new_opt(BTreeSet::from([word_node1.clone(), word_node2.clone()]), true);
+        execute_node_to_states_test(node);
+    }
 }

@@ -7,67 +7,7 @@
 use std::fmt;
 use std::collections::{HashSet, HashMap, BTreeSet};
 
-use crate::word::*;
-
-// Used as an intermediary data structure, keeping track of some additional information while we calculate atomic languages.
-#[derive(Eq, PartialEq, Hash, Debug, Clone, PartialOrd, Ord)]
-pub enum RegexSymbol {
-    Terminal(Terminal),
-    Nonterminal(Nonterminal),
-
-    // Placeholder symbol for atomic languages calculated in the future. If these atomic languages will exist,
-    // they will be prepended to the rest of the rule following the atomic language symbol.
-    AtomicLanguage(Nonterminal, Terminal),
-
-    // Expresses nulled symbols and its associated nulling rule
-    Nulled(Rules),
-    Epsilon,
-}
-
-impl fmt::Display for RegexSymbol {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RegexSymbol::Terminal(t) => write!(f, "{}", t),
-            RegexSymbol::Nonterminal(nt) => write!(f, "{}", nt),
-            RegexSymbol::AtomicLanguage(nt, t) => write!(f, "[{}]^({})", nt, t),
-            RegexSymbol::Nulled(rules) => print_rules(rules, f),
-            RegexSymbol::Epsilon => write!(f, "epsilon"),
-        }
-    }
-}
-
-type RegexWord = Vec<RegexSymbol>;
-
-pub fn print_regex_word(regex_word: &RegexWord, f: &mut fmt::Formatter) -> fmt::Result {
-    for regex_symbol in regex_word {
-        write!(f, "{}", regex_symbol)?;
-    }
-    Ok(())
-}
-
-type RegexWordRule = (RegexWord, Rules);
-
-pub fn print_regex_word_rule(regex_word_rule: &RegexWordRule, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "(")?;
-    print_regex_word(&regex_word_rule.0, f)?;
-    write!(f, " -> ")?;
-    print_rules(&regex_word_rule.1, f)?;
-    write!(f, ")")
-}
-
-type RegexWordRuleSet = HashSet<RegexWordRule>;
-
-pub fn print_regex_word_rule_set(regex_word_rule_set: &RegexWordRuleSet, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{{")?;
-    let mut peekable = regex_word_rule_set.iter().peekable();
-    while let Some(regex_word_rule) = peekable.next() {
-        print_regex_word_rule(regex_word_rule, f)?;
-        if peekable.peek().is_some() {
-            write!(f, " ")?;
-        }
-    }
-    write!(f, "}}")
-}
+use crate::{word::*, GrammarRules, RegexWordRuleSet, RegexWord, RegexWordRule, RegexSymbol};
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct IntermediateAtomic {
@@ -93,11 +33,11 @@ pub enum Node {
 }
 
 impl Regex {
-    pub fn new(terminals: &HashSet<Terminal>, rules: &HashMap<Nonterminal, HashSet<Word>>) -> Regex {
+    pub fn new(terminals: &HashSet<Terminal>, rules: &GrammarRules) -> Regex {
         let mut intermediate_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
         let nullable_nonterminals: HashMap<Nonterminal, RulesSet> = Regex::find_all_nullables(rules);
 
-        for (nonterminal, word_list) in rules {
+        for (nonterminal, word_list) in rules.iter() {
             //build intermediate atomic
             for terminal in terminals {
                 if let Some(intermediate_atomic) = IntermediateAtomic::new(*nonterminal, *terminal, word_list, &nullable_nonterminals) {
@@ -111,7 +51,6 @@ impl Regex {
 
         //first pass, then slowly resolve waiting atomics.
         for (key, intermediate_atomic) in &intermediate_atomics {
-            println!("{:?}", intermediate_atomic);
             if intermediate_atomic.direct.is_empty() && intermediate_atomic.different_atomic.is_empty() {
                 continue;
             }
@@ -134,11 +73,7 @@ impl Regex {
         res
     }
 
-    pub fn print_with_rules(&self) {
-        unimplemented!()
-    }
-
-    fn find_all_nullables(rules: &HashMap<Nonterminal, HashSet<Word>>) -> HashMap<Nonterminal, RulesSet> {
+    fn find_all_nullables(rules: &GrammarRules) -> HashMap<Nonterminal, RulesSet> {
         // Will contain all nullable nonterminals and the ways to null them
         let mut nullable_nonterminals: HashMap<Nonterminal, RulesSet> = HashMap::new();
 
@@ -146,20 +81,20 @@ impl Regex {
         // I.E. every rule that only consists of nonterminal symbols is potentially nullable
         let mut potentially_nullable_rules: HashMap<Nonterminal, HashSet<(Word, Vec<Nonterminal>)>> = HashMap::new();
 
-        for (nonterminal, word_set) in rules {
+        for (nonterminal, word_set) in rules.iter() {
             for word in word_set {
                 // If the rule is an epsilon rule, add the nonterminal to the nullables with that rule
-                if *word == vec![Symbol::Epsilon] {
-                    nullable_nonterminals.entry(*nonterminal).or_default().insert(vec![(*nonterminal, word.clone())]);
+                if *word == Word::from(vec![Symbol::Epsilon]) {
+                    nullable_nonterminals.entry(*nonterminal).or_default().insert_rule(Rule::from(*nonterminal, word.clone()));
                     continue;
                 }
 
                 // Else, if the rule is only nonterminals, add it to the potentially nullable rules
                 let mut nonterminals: Vec<Nonterminal> = Vec::with_capacity(word.len());
                 let mut potentially_nullable: bool = true;
-                for symbol in word {
+                for symbol in word.iter() {
                     match symbol {
-                        Symbol::Nonterminal(nt) => nonterminals.push(*nt),
+                        Symbol::Nonterminal(nt) => nonterminals.push(nt),
                         _ => potentially_nullable = false,
                     }
                 }
@@ -178,16 +113,18 @@ impl Regex {
                 for (word, chars) in word_set {
                     let mut nullable: bool = true;
                     // Initialise set of nulling rules with the rule that we are currently testing for nullability
-                    let mut nulling_rules_set: RulesSet = HashSet::from([vec![(*nonterminal, word.clone())]]);
+                    let mut nulling_rules_set: RulesSet = RulesSet::from(
+                        BTreeSet::from([Rules::from_single(*nonterminal, word.clone())])
+                    );
 
                     // Check every nonterminal in the rule
                     for nonterminal in chars {
                         if let Some(rules_set) = nullable_nonterminals.get(nonterminal) {
                             // If the current nonterminal is nullable, add all the ways to null it to the nulling rules set
-                            let mut new_nulling_rules_set: RulesSet = HashSet::new();
-                            for rules in rules_set {
-                                for nulling_rules in &nulling_rules_set {
-                                    new_nulling_rules_set.insert([nulling_rules.clone(), rules.clone()].concat());
+                            let mut new_nulling_rules_set: RulesSet = RulesSet::new();
+                            for rules in rules_set.iter() {
+                                for nulling_rules in nulling_rules_set.iter() {
+                                    new_nulling_rules_set.insert_rules(nulling_rules.concat(&rules));
                                 }
                             }
 
@@ -200,7 +137,7 @@ impl Regex {
                     }
 
                     if nullable {
-                        for nulling_rules in nulling_rules_set {
+                        for nulling_rules in nulling_rules_set.into_iter() {
                             // If the rule is nullable, we need to check whether we actually have a new way to null it
                             if let Some(entry) = nullable_nonterminals.get(nonterminal) {
                                 if entry.contains(&nulling_rules) {
@@ -209,7 +146,7 @@ impl Regex {
                             }
 
                             // If the way to null the rule is new, add it to the set and make sure we cycle through all the potentially nullable rules again
-                            nullable_nonterminals.entry(*nonterminal).or_default().insert(nulling_rules);
+                            nullable_nonterminals.entry(*nonterminal).or_default().insert_rules(nulling_rules);
                             changed = true;
                         }
                     }
@@ -233,12 +170,8 @@ impl fmt::Display for Regex {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Node::Word { word, rules, kleene } => {
-                write!(f, "(")?;
-                print_regex_word(word, f)?;
-                write!(f, " ")?;
-                print_rules(rules, f)?;
-                write!(f, ")")?;
+            Node::Word { word, kleene, .. } => {
+                write!(f, "({})", word)?;
                 if *kleene {
                     write!(f, "*")?;
                 }
@@ -277,24 +210,24 @@ impl fmt::Display for Node {
 
 impl IntermediateAtomic {
     pub fn new(nonterminal: Nonterminal, terminal: Terminal, word_set: &HashSet<Word>, nullable_nonterminals: &HashMap<Nonterminal, RulesSet>) -> Option<IntermediateAtomic> {
-        let mut direct: RegexWordRuleSet = HashSet::new();
-        let mut recursive: RegexWordRuleSet = HashSet::new();
-        let mut different_atomic: RegexWordRuleSet = HashSet::new();
+        let mut direct: RegexWordRuleSet = RegexWordRuleSet::new();
+        let mut recursive: RegexWordRuleSet = RegexWordRuleSet::new();
+        let mut different_atomic: RegexWordRuleSet = RegexWordRuleSet::new();
 
         let nulled_word_set = IntermediateAtomic::word_set_with_nullings(word_set, nullable_nonterminals);
 
         for (word, regex_word) in nulled_word_set {
             if let Some((new_regex_word, nulled_rules)) = IntermediateAtomic::shift_regex_word(&regex_word, terminal) {
-                match new_regex_word[0] {
+                match new_regex_word.first() {
                     RegexSymbol::AtomicLanguage(nt, _) => {
-                        if nonterminal == nt {
-                            recursive.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
+                        if nonterminal == *nt {
+                            recursive.insert(RegexWordRule::new(new_regex_word, nulled_rules.concat_rule(&Rule::from(nonterminal, word.clone()))));
                         } else {
-                            different_atomic.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
+                            different_atomic.insert(RegexWordRule::new(new_regex_word, nulled_rules.concat_rule(&Rule::from(nonterminal, word.clone()))));
                         }
                     },
                     _ => {
-                        direct.insert((new_regex_word, [nulled_rules.clone(), vec![(nonterminal, word.clone())]].concat()));
+                        direct.insert(RegexWordRule::new(new_regex_word, nulled_rules.concat_rule(&Rule::from(nonterminal, word.clone()))));
                     },
                 }
             }
@@ -333,11 +266,11 @@ impl IntermediateAtomic {
     fn regex_word_rule_set_to_node(set: &RegexWordRuleSet, rec: bool) -> Option<Node> {
         let mut nodes: BTreeSet<Node> = BTreeSet::new();
 
-        for (regex_word, rules) in set {
+        for regex_word_rule in set.iter() {
             if rec {
-                nodes.insert(Node::Word{word: regex_word[1..].to_vec(), rules: rules.clone(), kleene: false});
+                nodes.insert(Node::Word{word: regex_word_rule.regex_word().not_first(), rules: regex_word_rule.rules().clone(), kleene: false});
             } else {
-                nodes.insert(Node::Word{word: regex_word.clone(), rules: rules.clone(), kleene: false});
+                nodes.insert(Node::Word{word: regex_word_rule.regex_word().clone(), rules: regex_word_rule.rules().clone(), kleene: false});
             }
         }
 
@@ -360,7 +293,7 @@ impl IntermediateAtomic {
             let mut nullable_positions: Vec<(usize, RulesSet)> = Vec::new();
             for (pos, symbol) in word.iter().enumerate() {
                 match symbol {
-                    &Symbol::Nonterminal(nt) => {
+                    Symbol::Nonterminal(nt) => {
                         if let Some(nulling_rules_set) = nullable_nonterminals.get(&nt) {
                             nullable_positions.push((pos, nulling_rules_set.clone()));
                         }
@@ -374,9 +307,9 @@ impl IntermediateAtomic {
                 let mut newer_word_set = new_word_set.clone();
 
                 for (word, regex_word) in new_word_set {
-                    for rules in &rules_set {
+                    for rules in rules_set.iter() {
                         let mut new_regex_word = regex_word.clone();
-                        new_regex_word[pos] = RegexSymbol::Nulled(rules.clone());
+                        new_regex_word.set_position(pos, RegexSymbol::Nulled(rules.clone()));
                         newer_word_set.insert((word.clone(), new_regex_word));
                     }
                 }
@@ -391,8 +324,8 @@ impl IntermediateAtomic {
     }
 
     fn word_to_regex_word(word: &Word) -> RegexWord {
-        let mut res: RegexWord = Vec::with_capacity(word.len());
-        for symbol in word {
+        let mut res: RegexWord = RegexWord::new(Vec::with_capacity(word.len()));
+        for symbol in word.iter() {
             res.push(IntermediateAtomic::symbol_to_regex_symbol(symbol));
         }
         res
@@ -400,11 +333,11 @@ impl IntermediateAtomic {
     
     //performs shift by terminal and converts to regexword
     fn shift_regex_word(word: &RegexWord, terminal: Terminal) -> Option<(RegexWord, Rules)> {
-        let mut res_word: RegexWord = Vec::with_capacity(word.len());
-        let mut res_rules: Rules = Vec::new();
+        let mut res_word: RegexWord = RegexWord::new(Vec::with_capacity(word.len()));
+        let mut res_rules: Rules = Rules::new();
         let mut found_terminal: bool = false;
 
-        for symbol in word {
+        for symbol in word.iter() {
             match symbol {
                 RegexSymbol::Nulled(rules) => {
                     if !found_terminal {
@@ -442,7 +375,7 @@ impl IntermediateAtomic {
 
         if found_terminal {
             if res_word.is_empty() {
-                Some((vec![RegexSymbol::Epsilon], res_rules))
+                Some((RegexWord::new(vec![RegexSymbol::Epsilon]), res_rules))
             } else {
                 Some((res_word, res_rules))
             }
@@ -452,10 +385,10 @@ impl IntermediateAtomic {
     }
 
     //converts symbol to regex symbol
-    fn symbol_to_regex_symbol(symbol: &Symbol) -> RegexSymbol {
+    fn symbol_to_regex_symbol(symbol: Symbol) -> RegexSymbol {
         match symbol {
-            Symbol::Nonterminal(nt) => RegexSymbol::Nonterminal(*nt),
-            Symbol::Terminal(t) => RegexSymbol::Terminal(*t),
+            Symbol::Nonterminal(nt) => RegexSymbol::Nonterminal(nt),
+            Symbol::Terminal(t) => RegexSymbol::Terminal(t),
             Symbol::Epsilon => RegexSymbol::Epsilon,
         }
     }
@@ -463,10 +396,22 @@ impl IntermediateAtomic {
 }
 
 impl Node {
+    pub fn new_word(word: RegexWord, rules: Rules, kleene: bool) -> Node {
+        Node::Word{word, rules, kleene}
+    }
+
+    pub fn new_seq(nodes: Vec<Node>, kleene: bool) -> Node {
+        Node::Seq{nodes, kleene}
+    }
+
+    pub fn new_opt(nodes: BTreeSet<Node>, kleene: bool) -> Node {
+        Node::Opt{nodes, kleene}
+    }
+
     // Returns the rules by which a node is nulled.
     // Returns no nullings if the node contains a symbol
     pub fn get_nulling_rules(&self) -> Option<RulesSet> {
-        let mut rules_set: RulesSet = HashSet::new();
+        let mut rules_set: RulesSet = RulesSet::new();
         match self {
             Node::Opt { nodes, .. } => {
                 for node in nodes {
@@ -488,7 +433,7 @@ impl Node {
             },
             Node::Word { word, rules, .. } => {
                 if let Some(r) = Node::word_get_nulling_rules(word) {
-                    rules_set.insert([r, rules.clone()].concat());
+                    rules_set.insert_rules(r.concat(rules));
                 } else {
                     return None
                 }
@@ -498,10 +443,10 @@ impl Node {
     }
 
     fn word_get_nulling_rules(word: &RegexWord) -> Option<Rules> {
-        let mut rules: Rules = Vec::new();
-        for symbol in word {
+        let mut rules: Rules = Rules::new();
+        for symbol in word.iter() {
             if let Some(r) = Node::symbol_get_nulling_rules(symbol) {
-                rules = [rules, r].concat();
+                rules = rules.concat(&r);
             } else {
                 return None
             }
@@ -514,7 +459,7 @@ impl Node {
             RegexSymbol::AtomicLanguage(_, _) => None,
             RegexSymbol::Nonterminal(_) => None,
             RegexSymbol::Terminal(_) => None,
-            RegexSymbol::Epsilon => Some(Vec::new()),
+            RegexSymbol::Epsilon => Some(Rules::new()),
             RegexSymbol::Nulled(nulled_rules) => Some(nulled_rules.clone()),
         }
     }
@@ -525,10 +470,10 @@ impl Node {
         } else if set2.is_empty() {
             set1.clone()
         } else {
-            let mut res: RulesSet = HashSet::new();
-            for rule1 in set1 {
-                for rule2 in set2 {
-                    res.insert([rule1.clone(), rule2.clone()].concat());
+            let mut res: RulesSet = RulesSet::new();
+            for rules1 in set1.iter() {
+                for rules2 in set2.iter() {
+                    res.insert_rules(rules1.concat(&rules2));
                 }
             }
             res
@@ -541,28 +486,28 @@ impl Node {
 mod tests {
     use super::*;
 
-    fn standard_rules() -> HashMap<Nonterminal, HashSet<Word>> {
-        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-        rules.insert('S', HashSet::from([
-            vec![Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
+    fn standard_rules() -> GrammarRules {
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', HashSet::from([
+            Word::from(vec![Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')])
         ]));
 
 
-        rules
+        grammar_rules
     }
 
-    fn epsilon_rules() -> HashMap<Nonterminal, HashSet<Word>> {
-        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-        rules.insert('S', HashSet::from([
-            vec![Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
-            vec![Symbol::Epsilon]
+    fn epsilon_rules() -> GrammarRules {
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', HashSet::from([
+            Word::from(vec![Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]),
+            Word::from(vec![Symbol::Epsilon])
         ]));
 
-        rules
+        grammar_rules
     }
 
     #[test]
@@ -577,11 +522,13 @@ mod tests {
     #[test]
     fn intermediate_atomic() {
         let basic_words: HashSet<Word> = HashSet::from([
-            vec![Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
+            Word::from(vec![Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')])
         ]);
-        let nullable_nonterminals = Regex::find_all_nullables(&HashMap::from([('S', basic_words.clone())]));
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', basic_words.clone());
+        let nullable_nonterminals = Regex::find_all_nullables(&grammar_rules);
         if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', &basic_words, &nullable_nonterminals) {
             println!("{:?}", intermediate_atomic);
             // assert_eq!(intermediate_atomic, IntermediateAtomic{
@@ -599,12 +546,14 @@ mod tests {
         }
 
         let e_words: HashSet<Word> = HashSet::from([
-            vec![Symbol::Epsilon],
-            vec![Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-            vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
+            Word::from(vec![Symbol::Epsilon]),
+            Word::from(vec![Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')])
         ]);
-        let nullable_nonterminals = Regex::find_all_nullables(&HashMap::from([('S', e_words.clone())]));
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', e_words.clone());
+        let nullable_nonterminals = Regex::find_all_nullables(&grammar_rules);
         if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', &e_words, &nullable_nonterminals) {
             println!("{:?}", intermediate_atomic);
             // assert_eq!(intermediate_atomic, IntermediateAtomic{
@@ -622,10 +571,12 @@ mod tests {
         }
 
         let odd_a_words: HashSet<Word> = HashSet::from([
-            vec![Symbol::Terminal('a')],
-            vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')],
+            Word::from(vec![Symbol::Terminal('a')]),
+            Word::from(vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
         ]);
-        let nullable_nonterminals = Regex::find_all_nullables(&HashMap::from([('A', odd_a_words.clone())]));
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', odd_a_words.clone());
+        let nullable_nonterminals = Regex::find_all_nullables(&grammar_rules);
         if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', &odd_a_words, &nullable_nonterminals) {
             println!("{:?}", intermediate_atomic);
             // assert_eq!(intermediate_atomic, IntermediateAtomic{
@@ -638,70 +589,70 @@ mod tests {
             // });
         }
         
-        let mut many_nullables: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-        many_nullables.insert('S', HashSet::from([
-            vec![Symbol::Nonterminal('A'), Symbol::Nonterminal('B')],
-            vec![Symbol::Nonterminal('B')],
-            vec![Symbol::Terminal('z')],
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', HashSet::from([
+            Word::from(vec![Symbol::Nonterminal('A'), Symbol::Nonterminal('B')]),
+            Word::from(vec![Symbol::Nonterminal('B')]),
+            Word::from(vec![Symbol::Terminal('z')]),
         ]));
-        many_nullables.insert('A', HashSet::from([
-            vec![Symbol::Epsilon],
-            vec![Symbol::Terminal('a')],
+        grammar_rules.extend_with_words('A', HashSet::from([
+            Word::from(vec![Symbol::Epsilon]),
+            Word::from(vec![Symbol::Terminal('a')]),
         ]));
-        many_nullables.insert('B', HashSet::from([
-            vec![Symbol::Epsilon],
-            vec![Symbol::Nonterminal('A')],
+        grammar_rules.extend_with_words('B', HashSet::from([
+            Word::from(vec![Symbol::Epsilon]),
+            Word::from(vec![Symbol::Nonterminal('A')]),
         ]));
-        many_nullables.insert('C', HashSet::from([
-            vec![Symbol::Terminal('c')],
-            vec![Symbol::Nonterminal('D')],
-            vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')],
+        grammar_rules.extend_with_words('C', HashSet::from([
+            Word::from(vec![Symbol::Terminal('c')]),
+            Word::from(vec![Symbol::Nonterminal('D')]),
+            Word::from(vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')]),
         ]));
-        many_nullables.insert('D', HashSet::from([
-            vec![Symbol::Terminal('D')]
+        grammar_rules.extend_with_words('D', HashSet::from([
+            Word::from(vec![Symbol::Terminal('D')])
         ]));
-        let nullable_nonterminals = Regex::find_all_nullables(&many_nullables);
-        if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', many_nullables.get(&'S').unwrap(), &nullable_nonterminals) {
+        let nullable_nonterminals = Regex::find_all_nullables(&grammar_rules);
+        if let Some(intermediate_atomic) = IntermediateAtomic::new('S', 'a', grammar_rules.get_words(&'S').unwrap(), &nullable_nonterminals) {
             println!("{:?}", intermediate_atomic);
         }
     }
 
     #[test]
     fn find_all_nullables() {
-        let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-        rules.insert('S', HashSet::from([
-            vec![Symbol::Nonterminal('A'), Symbol::Nonterminal('B')],
-            vec![Symbol::Nonterminal('B')],
-            vec![Symbol::Terminal('z')],
+        let mut grammar_rules: GrammarRules = GrammarRules::new();
+        grammar_rules.extend_with_words('S', HashSet::from([
+            Word::from(vec![Symbol::Nonterminal('A'), Symbol::Nonterminal('B')]),
+            Word::from(vec![Symbol::Nonterminal('B')]),
+            Word::from(vec![Symbol::Terminal('z')]),
         ]));
-        rules.insert('A', HashSet::from([
-            vec![Symbol::Epsilon],
-            vec![Symbol::Terminal('a')],
+        grammar_rules.extend_with_words('A', HashSet::from([
+            Word::from(vec![Symbol::Epsilon]),
+            Word::from(vec![Symbol::Terminal('a')]),
         ]));
-        rules.insert('B', HashSet::from([
-            vec![Symbol::Epsilon],
-            vec![Symbol::Nonterminal('A')],
+        grammar_rules.extend_with_words('B', HashSet::from([
+            Word::from(vec![Symbol::Epsilon]),
+            Word::from(vec![Symbol::Nonterminal('A')]),
         ]));
-        rules.insert('C', HashSet::from([
-            vec![Symbol::Terminal('c')],
-            vec![Symbol::Nonterminal('D')],
-            vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')],
+        grammar_rules.extend_with_words('C', HashSet::from([
+            Word::from(vec![Symbol::Terminal('c')]),
+            Word::from(vec![Symbol::Nonterminal('D')]),
+            Word::from(vec![Symbol::Nonterminal('B'), Symbol::Terminal('c')]),
         ]));
-        rules.insert('D', HashSet::from([
-            vec![Symbol::Terminal('d')]
+        grammar_rules.extend_with_words('D', HashSet::from([
+            Word::from(vec![Symbol::Terminal('d')]),
         ]));
 
-        println!("{:?}", Regex::find_all_nullables(&rules));
+        println!("{:?}", Regex::find_all_nullables(&grammar_rules));
     }
 
     #[test]
     fn word_set_with_nullings() {
         let mut word_set: HashSet<Word> = HashSet::new();
-        word_set.insert(vec![Symbol::Terminal('a')]);
-        word_set.insert(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]);
-        word_set.insert(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]);
+        word_set.insert(Word::from(vec![Symbol::Terminal('a')]));
+        word_set.insert(Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]));
+        word_set.insert(Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]));
 
-        let nullable_nonterminals: HashMap<Nonterminal, RulesSet> = HashMap::from([('S', HashSet::from([vec![('S', vec![Symbol::Epsilon])]]))]);
+        let nullable_nonterminals: HashMap<Nonterminal, RulesSet> = HashMap::from([('S', RulesSet::from(BTreeSet::from([Rules::from_single('S', Word::from(vec![Symbol::Epsilon]))])))]);
 
         println!("{:?}", IntermediateAtomic::word_set_with_nullings(&word_set, &nullable_nonterminals));
     }
@@ -709,10 +660,31 @@ mod tests {
     #[test]
     fn shift_regex_word() {
         // fn shift_regex_word(word: &RegexWord, terminal: Terminal) -> Option<(RegexWord, RulesSet)> {
-        let regex_word: RegexWord = vec![RegexSymbol::Nulled(vec![('S', vec![Symbol::Nonterminal('B')]), ('B', vec![Symbol::Epsilon])]), RegexSymbol::Nulled(vec![('B', vec![Symbol::Epsilon])]), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')];
+        let regex_word: RegexWord = RegexWord::new(vec![
+            RegexSymbol::Nulled(
+                Rules::from(vec![
+                    Rule::from('S', Word::from(vec![Symbol::Nonterminal('B')])),
+                    Rule::from('B', Word::from(vec![Symbol::Epsilon]))
+                ])
+            ),
+            RegexSymbol::Nulled(
+                Rules::from(vec![
+                    Rule::from('B', Word::from(vec![Symbol::Epsilon]))
+                ])
+            ),
+            RegexSymbol::Terminal('a'),
+            RegexSymbol::Terminal('a')]);
         println!("{:?}", IntermediateAtomic::shift_regex_word(&regex_word, 'a'));
 
-        let regex_word: RegexWord = vec![RegexSymbol::Nonterminal('S'), RegexSymbol::Nulled(vec![('B', vec![Symbol::Epsilon])]), RegexSymbol::Terminal('a'), RegexSymbol::Terminal('a')];
+        let regex_word: RegexWord = RegexWord::new(vec![
+            RegexSymbol::Nonterminal('S'),
+            RegexSymbol::Nulled(
+                Rules::from(vec![
+                    Rule::from('B', Word::from(vec![Symbol::Epsilon]))
+                ])
+            ),
+            RegexSymbol::Terminal('a'),
+            RegexSymbol::Terminal('a')]);
         println!("{:?}", IntermediateAtomic::shift_regex_word(&regex_word, 'a'));
     }
 }
