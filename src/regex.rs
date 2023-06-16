@@ -70,7 +70,10 @@ impl Regex {
             let mut finishing_atomics: HashMap<(Nonterminal, Terminal), IntermediateAtomic> = HashMap::new();
 
             for (key, intermediate_atomic) in &waiting_atomics {
-                //TODO call resolve waiting atomic, then sort into finishing_atomics if finished.
+                if intermediate_atomic.try_finish(&finished_atomics) {
+                    finishing_atomics.insert(key.clone(), intermediate_atomic.clone());
+                    waiting_changing = true;
+                }
             }
 
             for (key, intermediate_atomic) in finishing_atomics {
@@ -79,9 +82,6 @@ impl Regex {
             }
 
         }
-
-
-        //TODO Resolve waiting atomic
 
         let mut res: Regex = Regex(HashMap::new());
 
