@@ -98,32 +98,23 @@ fn to_dot() {
     let grammar = common::basic_relational_parsing_example_grammar();
     grammar.finite_state_automaton.to_dot("basic relational").expect("error");
 
-    //let grammar = common::e_rule_relational_parsing_example_grammar();
-    //grammar.finite_state_automaton.to_dot("e-rule relational").expect("error");
+    let grammar = common::e_rule_relational_parsing_example_grammar();
+    grammar.finite_state_automaton.to_dot("e-rule relational").expect("error");
 
-    //let grammar = common::extra_e_rule_relational_parsing_example_grammar();
-    //grammar.finite_state_automaton.to_dot("extra e-rule relational").expect("error");
-    ////for (src, words) in grammar.rules {
-    ////    for word in words {
-    ////        print!("{} -> ", src);
-    ////        for symbol in word {
-    ////            print!("{}", symbol);
-    ////        }
-    ////        println!();
-    ////    }
-    ////}
+    let grammar = common::extra_e_rule_relational_parsing_example_grammar();
+    grammar.finite_state_automaton.to_dot("extra e-rule relational").expect("error");
 
-    //let grammar = common::three_rule_grammar();
-    //grammar.finite_state_automaton.to_dot("three-rule").expect("error");
+    let grammar = common::three_rule_grammar();
+    grammar.finite_state_automaton.to_dot("three-rule").expect("error");
 
-    //let grammar = common::difficult_bottom_up_grammar();
-    //grammar.finite_state_automaton.to_dot("difficult bottom up").expect("error");
+    let grammar = common::difficult_bottom_up_grammar();
+    grammar.finite_state_automaton.to_dot("difficult bottom up").expect("error");
 
-    //let grammar = common::odd_number_of_a_grammar();
-    //grammar.finite_state_automaton.to_dot("odd nr of a").expect("error");
+    let grammar = common::odd_number_of_a_grammar();
+    grammar.finite_state_automaton.to_dot("odd nr of a").expect("error");
 
-    //let grammar = common::direct_left_recursive_grammar();
-    //grammar.finite_state_automaton.to_dot("direct left-recursive").expect("error");
+    let grammar = common::direct_left_recursive_grammar();
+    grammar.finite_state_automaton.to_dot("direct left-recursive").expect("error");
 
     //let grammar = common::indirect_left_recursive_grammar();
     //grammar.finite_state_automaton.to_dot("indirect left-recursive").expect("error");
@@ -131,11 +122,11 @@ fn to_dot() {
     //let grammar = common::even_more_indirect_left_recursive_grammar();
     //grammar.finite_state_automaton.to_dot("very indirect left-recursive").expect("error");
 
-    //let grammar = common::direct_right_recursive_grammar();
-    //grammar.finite_state_automaton.to_dot("direct right-recursive").expect("error");
+    let grammar = common::direct_right_recursive_grammar();
+    grammar.finite_state_automaton.to_dot("direct right-recursive").expect("error");
 
-    //let grammar = common::indirect_right_recursive_grammar();
-    //grammar.finite_state_automaton.to_dot("indirect right-recursive").expect("error");
+    let grammar = common::indirect_right_recursive_grammar();
+    grammar.finite_state_automaton.to_dot("indirect right-recursive").expect("error");
 }
 
 // #[test]
