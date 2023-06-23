@@ -5,7 +5,7 @@
 use core::fmt;
 use std::collections::{HashSet, HashMap};
 
-use crate::word::*;
+use crate::{word::*, FiniteStateAutomaton};
 // use crate::finite_state_automaton::*;
 
 pub struct GrammarRules(HashMap<Nonterminal, HashSet<Word>>);
@@ -94,15 +94,14 @@ pub struct Grammar {
     pub nonterminals: HashSet<Nonterminal>,
     pub start: Nonterminal,
     pub rules: GrammarRules,
-    // pub finite_state_automaton: FiniteStateAutomaton,
+    pub finite_state_automaton: FiniteStateAutomaton,
 }
 
 impl Grammar {
     pub fn new(terminals: HashSet<Terminal>, nonterminals: HashSet<Nonterminal>, start: Nonterminal, rules: GrammarRules) -> Grammar {
         Grammar::check_valid(&terminals, &nonterminals, &rules);
-        // let finite_state_automaton = FiniteStateAutomaton::build_fsa(&terminals, start, &rules);
-        // Grammar{terminals, nonterminals, start, rules, finite_state_automaton}
-        Grammar{terminals, nonterminals, start, rules}
+        let finite_state_automaton = FiniteStateAutomaton::build_fsa(&terminals, start, &rules);
+        Grammar{terminals, nonterminals, start, rules, finite_state_automaton}
     }
 
     fn check_valid(terminals: &HashSet<Terminal>, nonterminals: &HashSet<Nonterminal>, rules: &GrammarRules) {

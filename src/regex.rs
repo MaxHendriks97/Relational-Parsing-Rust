@@ -207,6 +207,10 @@ impl Regex {
 
         nullable_nonterminals
     }
+
+    pub fn get(&self, nonterminal: Nonterminal, terminal: Terminal) -> Option<&Node> {
+        self.0.get(&(nonterminal, terminal))
+    }
 }
 
 impl fmt::Display for Regex {
