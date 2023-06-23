@@ -16,6 +16,12 @@ struct IntermediateAtomic {
     different_atomic: RegexWordRuleSet,
 }
 
+impl fmt::Display for IntermediateAtomic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "direct: {}\nrecursive: {}\ndifferent_atomic: {}", self.direct, self.recursive, self.different_atomic)
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct RecursiveAtomic{
     direct: RegexWordRuleSet,
@@ -504,6 +510,13 @@ impl Node {
 
     pub fn new_opt(nodes: BTreeSet<Node>, kleene: bool) -> Node {
         Node::Opt{nodes, kleene}
+    }
+
+    pub fn is_e_node(&self) -> bool {
+        match self {
+            Node::Word { word, .. } => word.is_e(),
+            _ => false,
+        }
     }
 
     // Returns the rules by which a node is nulled.

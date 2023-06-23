@@ -418,30 +418,30 @@ pub fn strange_recursive_grammar() -> Grammar {
 //     Grammar::new(terminals, nonterminals, start, grammar_rules)
 // }
 
-// pub fn another_broken_grammar() -> Grammar {
-//     // A -> B | C
-//     // B -> D | B b
-//     // C -> D | C c
-//     // D -> a
-//     // ((a(b)*) + (a(c)*))
-//     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
-//     let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B', 'C', 'D']);
-//     let start: Nonterminal = 'A';
-//     let mut grammar_rules: GrammarRules = GrammarRules::new();
-//     grammar_rules.insert_word_set('A', HashSet::from([
-//         vec![Symbol::Nonterminal('B')],
-//         vec![Symbol::Nonterminal('C')],
-//     ]));
-//     grammar_rules.insert_word_set('B', HashSet::from([
-//         vec![Symbol::Nonterminal('D')],
-//         vec![Symbol::Nonterminal('B'), Symbol::Terminal('b')],
-//     ]));
-//     grammar_rules.insert_word_set('C', HashSet::from([
-//         vec![Symbol::Nonterminal('D')],
-//         vec![Symbol::Nonterminal('C'), Symbol::Terminal('c')],
-//     ]));
-//     grammar_rules.insert_word_set('D', HashSet::from([
-//         vec![Symbol::Terminal('a'), Symbol::Terminal('a')],
-//     ]));
-//     Grammar::new(terminals, nonterminals, start, grammar_rules)
-// }
+pub fn another_broken_grammar() -> Grammar {
+    // A -> B | C
+    // B -> D | B b
+    // C -> D | C c
+    // D -> aa
+    // ((a(b)*) + (a(c)*))
+    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B', 'C', 'D']);
+    let start: Nonterminal = 'A';
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('A', HashSet::from([
+        Word::from(vec![Symbol::Nonterminal('B')]),
+        Word::from(vec![Symbol::Nonterminal('C')]),
+    ]));
+    grammar_rules.insert_word_set('B', HashSet::from([
+        Word::from(vec![Symbol::Nonterminal('D')]),
+        Word::from(vec![Symbol::Nonterminal('B'), Symbol::Terminal('b')]),
+    ]));
+    grammar_rules.insert_word_set('C', HashSet::from([
+        Word::from(vec![Symbol::Nonterminal('D')]),
+        Word::from(vec![Symbol::Nonterminal('C'), Symbol::Terminal('c')]),
+    ]));
+    grammar_rules.insert_word_set('D', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Terminal('a')]),
+    ]));
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
+}

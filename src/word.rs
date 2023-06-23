@@ -61,6 +61,10 @@ impl Word {
         self.len() == 0
     }
 
+    pub fn is_e(&self) -> bool {
+        self.len() == 1 && self.0[0] == Symbol::Epsilon
+    }
+
     pub fn equals(&self, other: &Word) -> bool {
         self.0 == other.0
     }

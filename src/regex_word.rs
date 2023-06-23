@@ -55,6 +55,10 @@ impl RegexWord {
         self.len() == 0
     }
 
+    pub fn is_e(&self) -> bool {
+        self.len() == 1 && self.0[0] == RegexSymbol::Epsilon
+    }
+
     pub fn equals(&self, other: &RegexWord) -> bool {
         self.0 == other.0
     }

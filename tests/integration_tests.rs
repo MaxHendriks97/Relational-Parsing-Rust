@@ -95,24 +95,31 @@ fn build_fsa_test() {
 
 #[test]
 fn to_dot() {
+    println!("basic relational");
     let grammar = common::basic_relational_parsing_example_grammar();
     grammar.finite_state_automaton.to_dot("basic relational").expect("error");
 
+    println!("e-rule relational");
     let grammar = common::e_rule_relational_parsing_example_grammar();
     grammar.finite_state_automaton.to_dot("e-rule relational").expect("error");
 
+    println!("extra e-rule relational");
     let grammar = common::extra_e_rule_relational_parsing_example_grammar();
     grammar.finite_state_automaton.to_dot("extra e-rule relational").expect("error");
 
+    println!("three-rule");
     let grammar = common::three_rule_grammar();
     grammar.finite_state_automaton.to_dot("three-rule").expect("error");
 
+    println!("difficult bottom up");
     let grammar = common::difficult_bottom_up_grammar();
     grammar.finite_state_automaton.to_dot("difficult bottom up").expect("error");
 
+    println!("odd nr of a");
     let grammar = common::odd_number_of_a_grammar();
     grammar.finite_state_automaton.to_dot("odd nr of a").expect("error");
 
+    println!("direct left-recursive");
     let grammar = common::direct_left_recursive_grammar();
     grammar.finite_state_automaton.to_dot("direct left-recursive").expect("error");
 
@@ -122,9 +129,11 @@ fn to_dot() {
     //let grammar = common::even_more_indirect_left_recursive_grammar();
     //grammar.finite_state_automaton.to_dot("very indirect left-recursive").expect("error");
 
+    println!("direct right-recursive");
     let grammar = common::direct_right_recursive_grammar();
     grammar.finite_state_automaton.to_dot("direct right-recursive").expect("error");
 
+    println!("indirect right-recursive");
     let grammar = common::indirect_right_recursive_grammar();
     grammar.finite_state_automaton.to_dot("indirect right-recursive").expect("error");
 }
@@ -138,22 +147,12 @@ fn to_dot() {
 //     grammar.finite_state_automaton.to_dot("lua_like").expect("error");
 // }
 
-// #[test]
-// fn broken() {
-//     let grammar = common::another_broken_grammar();
-//     let reg = Regex::new(&grammar.terminals, &grammar.rules);
-//     println!("{}", reg);
-// }
-// #[test]
-// fn basic_relational_grammar_fsa_test() {
-//     let grammar = common::basic_relational_parsing_example_grammar();
-
-//     let fsa = grammar.finite_state_automaton;
-
-//     let (start_state, start_accepting) = fsa.get_start();
-//     assert!(!start_accepting);
-// }
-
+ #[test]
+ fn broken() {
+     let grammar = common::another_broken_grammar();
+     let reg = Regex::new(&grammar.terminals, &grammar.rules);
+     println!("{}", reg);
+ }
 
 // #[test]
 // fn basic_relational_grammar_recog_test() {
