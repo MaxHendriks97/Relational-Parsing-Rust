@@ -172,7 +172,7 @@ impl ParseRoundNoMemo {
             let target_depth: Depth = Depth::new(1);
             let edge: language_list::Edge = language_list::Edge::new(*atomic.0, target_depth);
             if finite_state_automaton.has_edge(atomic.0) {
-                match (atomic.1.is_empty(), atomic.2 && (prep_deriv.is_final() || language_list.get(target_depth).map_or(false, |l| l.is_final()))) {
+                match (atomic.1.is_empty(), atomic.2 && (prep_deriv.is_final() || !prep_deriv.has_edges() && language_list.get(target_depth).map_or(false, |l| l.is_final()))) {
                     (true, true) => {
                         prep.insert_edge(edge, None);
                         prep.set_final();
@@ -196,10 +196,15 @@ impl ParseRoundNoMemo {
             }
 
             if atomic.2 {
-                for rules in atomic.1.iter() {
-                    //(state, depth)
+                if atomic.1.is_empty() {
                     for (edge, applied_rules_set) in prep_deriv.edges_ref().iter() {
-                        prep.extend_edge(language_list::Edge::new(edge.state(), edge.depth() + target_depth), applied_rules_set.prepend_rules(rules));
+                        prep.extend_edge(language_list::Edge::new(edge.state(), edge.depth() + target_depth), applied_rules_set.clone());
+                    }
+                } else {
+                    for rules in atomic.1.iter() {
+                        for (edge, applied_rules_set) in prep_deriv.edges_ref().iter() {
+                            prep.extend_edge(language_list::Edge::new(edge.state(), edge.depth() + target_depth), applied_rules_set.prepend_rules(rules));
+                        }
                     }
                 }
             }
@@ -223,7 +228,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
-            //println!("Next token: {}", token);
+            println!("Next token: {}", token);
 
             let mut curr: ParseRoundNoMemo = ParseRoundNoMemo::new();
             curr.derive(&curr_lang, &language_list, *token, finite_state_automaton);
@@ -243,7 +248,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
             return Err(ParseError);
         }
 
-        //println!("{}", language_list);
+        println!("{}", language_list);
     }
 
 
