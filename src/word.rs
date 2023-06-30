@@ -265,4 +265,20 @@ impl RulesSet {
     pub fn extend(&mut self, rules_set: RulesSet) {
         self.0.extend(rules_set.0);
     }
+
+    pub fn prepend_rules(&self, rules: &Rules) -> RulesSet {
+        let mut rules_set = self.clone();
+        for rules_ in rules_set.iter() {
+            rules_set.insert_rules(rules.concat(rules_));
+        }
+        rules_set
+    }
+
+    pub fn concatenate_rules_set(&self, other: &RulesSet) -> RulesSet {
+        let mut rules_set = RulesSet::new();
+        for rules in self.iter() {
+            rules_set.extend(other.prepend_rules(rules));
+        }
+        rules_set
+    }
 }
