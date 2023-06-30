@@ -191,9 +191,9 @@ fn basic_relational_grammar_recog_test() {
     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['b', 'c', 'b', 'c', 'b', 'c', 'a'], &grammar));
 }
 
-// #[test]
-// fn e_rule_relational_grammar_recog_test() {
-//     let grammar = common::e_rule_relational_parsing_example_grammar();
+#[test]
+fn e_rule_relational_grammar_recog_test() {
+    let grammar = common::e_rule_relational_parsing_example_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec![], &grammar, &mut memoize));
@@ -211,25 +211,25 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec![], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'a', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['b', 'b', 'b', 'b', 'c', 'c', 'c', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['b', 'c', 'b', 'c', 'b', 'c', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec![], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'a', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['b', 'b', 'b', 'b', 'c', 'c', 'c', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['b', 'c', 'b', 'c', 'b', 'c', 'a'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar));
-// }
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar));
+}
 
-// #[test]
-// fn extra_e_rule_relational_grammar_recog_test() {
-//     let grammar = common::extra_e_rule_relational_parsing_example_grammar();
+#[test]
+fn extra_e_rule_relational_grammar_recog_test() {
+    let grammar = common::extra_e_rule_relational_parsing_example_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec![], &grammar, &mut memoize));
@@ -246,24 +246,24 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec![], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'a', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'c', 'b', 'c', 'b', 'c', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec![], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'c', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'a', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'c', 'b', 'c', 'b', 'c', 'a'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar));
-// }
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'c', 'c'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'b', 'a', 'b', 'a', 'c'], &grammar));
+}
 
-// #[test]
-// fn three_rule_grammar_recog_test() {
-//     let grammar = common::three_rule_grammar();
+#[test]
+fn three_rule_grammar_recog_test() {
+    let grammar = common::three_rule_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a'], &grammar, &mut memoize));
@@ -277,21 +277,21 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'b', 'b'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b', 'a', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b', 'a', 'b'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'b'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
-// }
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'b'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'b', 'b'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
+}
 
-// #[test]
-// fn difficult_bottom_up_grammar_recog_test() {
-//     let grammar = common::difficult_bottom_up_grammar();
+#[test]
+fn difficult_bottom_up_grammar_recog_test() {
+    let grammar = common::difficult_bottom_up_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a'], &grammar, &mut memoize));
@@ -309,26 +309,25 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', '-', 'a', 'a', 'a'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', '-', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '+', 'a', '-', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a', '-', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '+', 'a', '-', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', 'a', '-', 'a'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['-', '-'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['-', '-', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', '+'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', 'a', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', 'a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['-', '-'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['-', '-', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', '+', '+'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', 'a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', '-', 'a', 'a', 'a'], &grammar));
+}
 
-// }
-
-// #[test]
-// fn odd_number_of_a_grammar_recog_test() {
-//     let grammar = common::odd_number_of_a_grammar();
+#[test]
+fn odd_number_of_a_grammar_recog_test() {
+    let grammar = common::odd_number_of_a_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
@@ -340,29 +339,29 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar));
-// }
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar));
+}
 
-// #[test]
-// fn even_a_middle_b_test() {
-//     let grammar = common::even_a_middle_b_grammar();
+#[test]
+fn even_a_middle_b_test() {
+    let grammar = common::even_a_middle_b_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'b', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'a', 'a'], &grammar));
-// }
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'b', 'a', 'a', 'a'], &grammar));
+}
 
-// #[test]
-// fn direct_left_recursive_grammar_recog_test() {
-//     let grammar = common::direct_left_recursive_grammar();
+#[test]
+fn direct_left_recursive_grammar_recog_test() {
+    let grammar = common::direct_left_recursive_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a'], &grammar, &mut memoize));
@@ -371,13 +370,14 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a'], &grammar, &mut memoize));
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
-// }
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
+}
 
+// Indirect left recursion is not supported yet
 // #[test]
 // fn indirect_left_recursive_grammar_recog_test() {
 //     let grammar = common::indirect_left_recursive_grammar();
@@ -396,6 +396,7 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a'], &grammar));
 // }
 
+// Indirect left recursion is not supported yet
 // #[test]
 // fn even_more_indirect_left_recursive_grammar_recog_test() {
 //     let grammar = common::even_more_indirect_left_recursive_grammar();
@@ -442,9 +443,9 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['c', 'a', 'a', 'a', 'a'], &grammar));
 // }
 
-// #[test]
-// fn direct_right_recursive_grammar_recog_test() {
-//     let grammar = common::direct_right_recursive_grammar();
+#[test]
+fn direct_right_recursive_grammar_recog_test() {
+    let grammar = common::direct_right_recursive_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a'], &grammar, &mut memoize));
@@ -452,15 +453,15 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a'], &grammar, &mut memoize));
 //     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
-// }
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
+}
 
-// #[test]
-// fn indirect_right_recursive_grammar_recog_test() {
-//     let grammar = common::indirect_right_recursive_grammar();
+#[test]
+fn indirect_right_recursive_grammar_recog_test() {
+    let grammar = common::indirect_right_recursive_grammar();
 //     let mut memoize: Memoize = Memoize::new();
 
 //     assert!(relational_parsing::g_accepts_string(&vec!['a'], &grammar, &mut memoize));
@@ -473,16 +474,16 @@ fn basic_relational_grammar_recog_test() {
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'b', 'b'], &grammar, &mut memoize));
 //     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a'], &grammar, &mut memoize));
 
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b'], &grammar));
-//     assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b'], &grammar));
+    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'a', 'b', 'a', 'b'], &grammar));
 
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['b'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'b'], &grammar));
-//     assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-// }
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['b'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'b', 'b'], &grammar));
+    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
+}
 
 // fn build_rule(rule: (Nonterminal, &str)) -> (Nonterminal, Vec<Symbol>) {
 //     let mut res_rule: Vec<Symbol> = Vec::with_capacity(rule.1.len());

@@ -228,7 +228,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
-            println!("Next token: {}", token);
+            //println!("Next token: {}", token);
 
             let mut curr: ParseRoundNoMemo = ParseRoundNoMemo::new();
             curr.derive(&curr_lang, &language_list, *token, finite_state_automaton);
@@ -248,7 +248,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
             return Err(ParseError);
         }
 
-        println!("{}", language_list);
+        //println!("{}", language_list);
     }
 
 
