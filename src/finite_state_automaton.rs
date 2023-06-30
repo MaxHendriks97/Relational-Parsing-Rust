@@ -3,7 +3,7 @@
 //! The `finite_state_automaton` module defines the data structure used to represent finite state automatons.
 //! Additionally, it defines the methods necessary to build finite state automata from the atomic languages belonging to a given grammar,
 //! as well as methods used to simulate finite state automata during parsing.
-use std::collections::{HashSet, HashMap, VecDeque};
+use std::collections::{HashSet, HashMap};
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
