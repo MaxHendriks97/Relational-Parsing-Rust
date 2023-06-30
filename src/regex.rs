@@ -115,7 +115,7 @@ impl Regex {
 
             let mut converted_atomics: Vec<(Nonterminal, Terminal)> = Vec::new();
             for (key, atomic) in finished_atomics.iter() {
-                if let Some(node) = IntermediateAtomic::atomic_to_node(atomic.clone(), &finished_atomics, &res.0) {
+                if let Some(node) = IntermediateAtomic::atomic_to_node(atomic.clone(), &res.0) {
                     res.0.insert(key.clone(), node);
                     converted_atomics.push(key.clone());
                     res_changing = true
@@ -334,7 +334,7 @@ impl IntermediateAtomic {
         finished
     }
 
-    fn atomic_to_node(atomic: IntermediateAtomic, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>, finished_nodes: &HashMap<(Nonterminal, Terminal), Node>) -> Option<Node> {
+    fn atomic_to_node(atomic: IntermediateAtomic, finished_nodes: &HashMap<(Nonterminal, Terminal), Node>) -> Option<Node> {
         if let Some(mut direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
             for regex_word_rule in atomic.different_atomic.iter() {
                 let regex_word = regex_word_rule.word();

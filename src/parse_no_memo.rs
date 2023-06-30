@@ -1,7 +1,7 @@
 //! # Parse no memo
 //! 
 //! The `parse_no_memo` data structure contains a non-memoizing variant of the data structure and methods contained in the `parse` module.
-use std::collections::{HashSet, BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::*;
 
@@ -32,7 +32,7 @@ impl ParseRoundNoMemo {
                 }
                 language_list.insert_new_language(prep_deriv);
             } else {
-                if let Some(mut deriv) = self.deriv {
+                if let Some(deriv) = self.deriv {
                     prep.extend(deriv);
                 }
             }

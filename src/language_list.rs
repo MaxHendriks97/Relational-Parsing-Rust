@@ -2,8 +2,8 @@
 //! 
 //! The `Language_List` module defines the Language and LanguageList data structures necessary to keep track of all information relevant during parsing.
 //! Additionally, it supplies many methods that aid in the parsing effort.
-use std::collections::{hash_set, hash_map, btree_map};
-use std::collections::{HashMap, HashSet, BTreeSet, BTreeMap};
+use std::collections::btree_map;
+use std::collections::{BTreeSet, BTreeMap};
 use std::fmt;
 use std::mem;
 use std::ops::{Add, Sub};

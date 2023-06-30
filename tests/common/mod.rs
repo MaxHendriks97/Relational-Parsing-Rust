@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, BTreeSet};
+use std::collections::HashSet;
 
 use relational_parsing::{Symbol, Nonterminal, Terminal, Word, Grammar, Rules, GrammarRules};
 

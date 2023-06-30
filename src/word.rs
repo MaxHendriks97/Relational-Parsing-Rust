@@ -258,8 +258,7 @@ impl RulesSet {
     }
 
     pub fn insert_rule(&mut self, rule: Rule) {
-        let mut rules = Rules::from(vec![rule]);
-        self.0.insert(rules);
+        self.0.insert(Rules::from(vec![rule]));
     }
 
     pub fn extend(&mut self, rules_set: RulesSet) {
