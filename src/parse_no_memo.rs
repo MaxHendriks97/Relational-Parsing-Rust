@@ -21,8 +21,9 @@ impl ParseRoundNoMemo {
             
             if prep_deriv.has_edges() {
                 if let Some(mut deriv) = self.deriv {
-                    for ((state, depth), rules_set) in deriv.take_edges() {
-                        prep.extend_edge((state, depth + 1), rules_set);
+                    for (mut edge, rules_set) in deriv.take_edges().into_iter() {
+                        edge.add_to_depth(1);
+                        prep.extend_edge(edge, rules_set);
                     }
                     prep.extend_completed_parses(deriv.take_completed_parses());
                     if deriv.is_final() {
@@ -32,25 +33,19 @@ impl ParseRoundNoMemo {
                 language_list.insert_new_language(prep_deriv);
             } else {
                 if let Some(mut deriv) = self.deriv {
-                    for (edge, rules_set) in deriv.take_edges() {
-                        prep.extend_edge(edge, rules_set);
-                    }
-                    prep.extend_completed_parses(deriv.take_completed_parses());
-                    if deriv.is_final() {
-                        prep.set_final();
-                    }
+                    prep.extend(deriv);
                 }
             }
 
             if prep.has_edges() || prep.is_final() {
                 let lowest_depth = prep.find_lowest_depth();
-                if lowest_depth > 1 {
+                if lowest_depth.0 > 1 {
                     prep.adjust_lowest_depth(lowest_depth);
-                    for _ in 1..lowest_depth {
+                    for _ in 1..lowest_depth.0 {
                         language_list.pop_lang();
                     }
                 }
-                ParseRound::e_sim(&mut prep, &language_list, finite_state_automaton);
+                ParseRoundNoMemo::e_sim(&mut prep, &language_list, finite_state_automaton);
                 language_list.insert_new_language(prep);
             }
             Ok(())
@@ -58,9 +53,9 @@ impl ParseRoundNoMemo {
             if let Some(mut lang) = self.deriv {
                 if lang.has_edges() {
                     let lowest_depth = lang.find_lowest_depth();
-                    if lowest_depth > 1 {
+                    if lowest_depth.0 > 1 {
                         lang.adjust_lowest_depth(lowest_depth);
-                        for _ in 1..lowest_depth {
+                        for _ in 1..lowest_depth.0 {
                             language_list.pop_lang();
                         }
                     }
@@ -74,27 +69,59 @@ impl ParseRoundNoMemo {
         }
     }
 
-    pub fn derive(&mut self, curr_lang: &Language, language_list: &LanguageList, terminal: Terminal, finite_state_automaton: &FiniteStateAutomaton) {
-        let mut deriv: Language = Language::new();
+    pub fn e_sim(lang: &mut Language, language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
+        let mut to_simulate: Vec<(language_list::Edge, RulesSet)> = lang.edges_ref().clone().into_iter().collect();
 
-        for ((start_state, end_depth), applied_rules_set) in curr_lang.edges_ref() {
-            if let Some(destinations) = finite_state_automaton.simulate(start_state, Symbol::Terminal(terminal)) {
+        while let Some((edge, applied_rules_set)) = to_simulate.pop() {
+            if let Some(destinations) = finite_state_automaton.simulate(&edge.state(), Symbol::Epsilon) {
                 for (end_state, new_rules, end_state_accepting) in destinations {
-                    let res_rules_set: HashSet<Rules> = prepend_rules_to_rules_set(new_rules, &applied_rules_set);
-                    let dest_language: &Language = language_list.get(*end_depth).unwrap();
-
+                    let dest_language: &Language = language_list.get(edge.depth()).unwrap();
+                    let res_rules_set: RulesSet  = applied_rules_set.prepend_rules(&new_rules.clone().unwrap());
                     if end_state_accepting {
                         if dest_language.is_final() {
-                            deriv.extend_completed_parses(res_rules_set.clone().into_iter());
-                            deriv.set_final();
+                            lang.set_final();
+                            lang.extend_completed_parses(res_rules_set.clone());
                         } else {
-                            for ((state, depth), rules_set) in dest_language.edges_ref() {
-                                deriv.extend_edge((*state, *depth + *end_depth), concatenate_rules_sets(&res_rules_set, rules_set));
+                            for (dest_edge, rules_set) in dest_language.edges_ref().iter() {
+                                let new_res_rules_set: RulesSet = res_rules_set.concatenate_rules_set(rules_set);
+                                let res_edge: language_list::Edge = language_list::Edge::new(dest_edge.state(), dest_edge.depth() + edge.depth());
+                                lang.extend_edge(res_edge, new_res_rules_set.clone());
+                                to_simulate.push((res_edge, new_res_rules_set));
                             }
                         }
                     }
                     if finite_state_automaton.has_edge(end_state) {
-                        deriv.extend_edge((*end_state, *end_depth), res_rules_set.clone());
+                        lang.extend_edge(edge, res_rules_set.clone());
+                        to_simulate.push((edge, res_rules_set));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn derive(&mut self, curr_lang: &Language, language_list: &LanguageList, terminal: Terminal, finite_state_automaton: &FiniteStateAutomaton) {
+        let mut deriv: Language = Language::new();
+
+        //(start_state, end_depth)
+        for (edge, applied_rules_set) in curr_lang.edges_ref().iter() {
+            if let Some(destinations) = finite_state_automaton.simulate(&edge.state(), Symbol::Terminal(terminal)) {
+                for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                    let res_rules_set: RulesSet = applied_rules_set.prepend_opt_rules(opt_new_rules);
+                    let dest_language: &Language = language_list.get(edge.depth()).unwrap();
+
+                    if end_state_accepting {
+                        if dest_language.is_final() {
+                            deriv.extend_completed_parses(res_rules_set.clone());
+                            deriv.set_final();
+                        } else {
+                            //(state, depth)
+                            for (edge_dest, rules_set) in dest_language.edges_ref().iter() {
+                                deriv.extend_edge(language_list::Edge::new(edge_dest.state(), edge_dest.depth() + edge.depth()), res_rules_set.concatenate_rules_set(rules_set));
+                            }
+                        }
+                    }
+                    if finite_state_automaton.has_edge(end_state) {
+                        deriv.extend_edge(language_list::Edge::new(*end_state, edge.depth()), res_rules_set.clone());
                     }
 
                 }
@@ -110,23 +137,25 @@ impl ParseRoundNoMemo {
         let prep_deriv: &mut Language = self.prep_deriv.get_or_insert(Language::new());
         let mut ret: bool = false;
 
-        for ((start_state, end_depth), applied_rules_set) in curr_lang.edges_ref() {
-            if let Some(destinations) = finite_state_automaton.simulate(start_state, Symbol::Nonterminal(nonterminal)) {
+        //(start_state, end_depth)
+        for (edge, applied_rules_set) in curr_lang.edges_ref().iter() {
+            if let Some(destinations) = finite_state_automaton.simulate(&edge.state(), Symbol::Nonterminal(nonterminal)) {
                 ret = true;
                 
-                for (end_state, new_rules, end_state_accepting) in destinations {
-                    let res_rules_set: RulesSet = prepend_rules_to_rules_set(new_rules, &applied_rules_set);
-                    let dest_language: &Language = language_list.get(*end_depth).unwrap();
+                for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                    let res_rules_set: RulesSet = applied_rules_set.prepend_opt_rules(opt_new_rules);
+                    let dest_language: &Language = language_list.get(edge.depth()).unwrap();
 
                     if end_state_accepting {
                         if dest_language.not_final() {
-                            for ((state, depth), rules_set) in dest_language.edges_ref() {
-                                prep_deriv.extend_edge((*state, *depth + *end_depth), concatenate_rules_sets(&res_rules_set, rules_set));
+                            //(state, depth)
+                            for (end_edge, rules_set) in dest_language.edges_ref().iter() {
+                                prep_deriv.extend_edge(language_list::Edge::new(end_edge.state(), end_edge.depth() + edge.depth()), res_rules_set.concatenate_rules_set(rules_set));
                             }
                         }
                     }
                     if finite_state_automaton.has_edge(end_state) {
-                        prep_deriv.extend_edge((*end_state, *end_depth), res_rules_set.clone());
+                        prep_deriv.extend_edge(language_list::Edge::new(*end_state, edge.depth()), res_rules_set.clone());
                     }
 
                 }
@@ -136,13 +165,14 @@ impl ParseRoundNoMemo {
         ret
     }
 
-    pub fn prepend(&mut self, atomic: (&State, &HashSet<Rules>, bool), language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
+    pub fn prepend(&mut self, atomic: (&State, &RulesSet, bool), language_list: &LanguageList, finite_state_automaton: &FiniteStateAutomaton) {
         if let Some(prep_deriv) = &self.prep_deriv {
             let mut prep: Language = Language::new();
 
-            let edge: Edge = (*atomic.0, 1);
+            let target_depth: Depth = Depth::new(1);
+            let edge: language_list::Edge = language_list::Edge::new(*atomic.0, target_depth);
             if finite_state_automaton.has_edge(atomic.0) {
-                match (atomic.1.is_empty(), atomic.2 && (prep_deriv.is_final() || language_list.get(1).map_or(false, |l| l.is_final()))) {
+                match (atomic.1.is_empty(), atomic.2 && (prep_deriv.is_final() || language_list.get(target_depth).map_or(false, |l| l.is_final()))) {
                     (true, true) => {
                         prep.insert_edge(edge, None);
                         prep.set_final();
@@ -151,14 +181,14 @@ impl ParseRoundNoMemo {
                         prep.insert_edge(edge, None);
                     },
                     (false, true) => {
-                        for rules in atomic.1 {
+                        for rules in atomic.1.iter() {
                             prep.insert_edge(edge, Some(rules.clone()));
                             prep.insert_completed_parse(rules.clone());
                         }
                         prep.set_final();
                     },
                     (false, false) => {
-                        for rules in atomic.1 {
+                        for rules in atomic.1.iter() {
                             prep.insert_edge(edge, Some(rules.clone()));
                         }
                     },
@@ -166,9 +196,10 @@ impl ParseRoundNoMemo {
             }
 
             if atomic.2 {
-                for rules in atomic.1 {
-                    for ((state, depth), applied_rules_set) in prep_deriv.edges_ref() {
-                        prep.extend_edge((*state, depth + 1), prepend_rules_to_rules_set(rules, applied_rules_set));
+                for rules in atomic.1.iter() {
+                    //(state, depth)
+                    for (edge, applied_rules_set) in prep_deriv.edges_ref().iter() {
+                        prep.extend_edge(language_list::Edge::new(edge.state(), edge.depth() + target_depth), applied_rules_set.prepend_rules(rules));
                     }
                 }
             }
@@ -187,7 +218,8 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
     let mut language_list: LanguageList = LanguageList::new();
 
     let (start_state, start_accepting) = finite_state_automaton.get_start();
-    language_list.insert_new_language(Language::new_from(BTreeMap::from([((start_state, 1), HashSet::new())]), HashSet::new(), start_accepting));
+    let start_edges: language_list::Edges = language_list::Edges::from(BTreeMap::from([(language_list::Edge::new(start_state, Depth::new(1)), RulesSet::new())]));
+    language_list.insert_new_language(Language::new_from(start_edges, RulesSet::new(), start_accepting));
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
@@ -216,7 +248,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
 
 
     if let Some(mut last_lang) = language_list.pop_lang() {
-        ParseRound::e_sim(&mut last_lang, &language_list, finite_state_automaton);
+        ParseRoundNoMemo::e_sim(&mut last_lang, &language_list, finite_state_automaton);
         //println!("{}", language_list);
         //println!("Last: {}", last_lang);
         //println!("{}", memoize);
@@ -234,11 +266,11 @@ pub fn g_accepts_string_no_memo(token_string: &Vec<Terminal>, grammar: &Grammar)
     }
 }
 
-pub fn find_parses_no_memo(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<CompletedParses, ParseError> {
+pub fn find_parses_no_memo(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<RulesSet, ParseError> {
     match parse(token_string, grammar) {
         Ok(mut last_lang) => {
             if last_lang.is_final() && last_lang.has_completed_parses() {
-                Ok(last_lang.take_completed_parses().collect())
+                Ok(last_lang.take_completed_parses())
             } else {
                 Err(ParseError)
             }

@@ -268,10 +268,17 @@ impl RulesSet {
 
     pub fn prepend_rules(&self, rules: &Rules) -> RulesSet {
         let mut rules_set = self.clone();
-        for rules_ in rules_set.iter() {
+        for rules_ in self.iter() {
             rules_set.insert_rules(rules.concat(rules_));
         }
         rules_set
+    }
+
+    pub fn prepend_opt_rules(&self, rules: &Option<Rules>) -> RulesSet {
+        match rules {
+            Some(rules) => self.prepend_rules(rules),
+            None => self.clone(),
+        }
     }
 
     pub fn concatenate_rules_set(&self, other: &RulesSet) -> RulesSet {
