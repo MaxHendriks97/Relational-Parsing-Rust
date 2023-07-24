@@ -1,6 +1,6 @@
 use relational_parsing::{
     self,
-    Regex, RulesSet, Rules, Terminal, ParseError
+    RulesSet, Terminal, ParseError
 };
 
 mod common;
