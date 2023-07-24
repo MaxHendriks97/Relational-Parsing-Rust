@@ -117,6 +117,8 @@ impl ParseRoundNoMemo {
                             //(state, depth)
                             for (edge_dest, rules_set) in dest_language.edges_ref().iter() {
                                 deriv.extend_edge(language_list::Edge::new(edge_dest.state(), edge_dest.depth() + edge.depth()), res_rules_set.concatenate_rules_set(rules_set));
+                                //deriv.extend_edge(language_list::Edge::new(edge_dest.state(), edge_dest.depth() + edge.depth()), RulesSet::from_rules(Rules::from_string_vec(vec![('S', "test")])));
+                                //prep.insert_edge(edge, Some(Rules::from_string_vec(vec![('S', "test")])));
                             }
                         }
                     }
@@ -134,15 +136,19 @@ impl ParseRoundNoMemo {
     }
 
     pub fn prep_derive(&mut self, curr_lang: &Language, language_list: &LanguageList, nonterminal: Nonterminal, finite_state_automaton: &FiniteStateAutomaton) -> bool {
+        //println!("Deriving by: {}", nonterminal);
         let prep_deriv: &mut Language = self.prep_deriv.get_or_insert(Language::new());
+        //println!("prep_deriv: {}", prep_deriv);
         let mut ret: bool = false;
 
         //(start_state, end_depth)
         for (edge, applied_rules_set) in curr_lang.edges_ref().iter() {
             if let Some(destinations) = finite_state_automaton.simulate(&edge.state(), Symbol::Nonterminal(nonterminal)) {
+                //println!("destinations: {:?}", destinations);
                 ret = true;
                 
                 for (end_state, opt_new_rules, end_state_accepting) in destinations {
+                    //println!("opt_new_rules: {:?}", opt_new_rules);
                     let res_rules_set: RulesSet = applied_rules_set.prepend_opt_rules(opt_new_rules);
                     let dest_language: &Language = language_list.get(edge.depth()).unwrap();
 
@@ -228,7 +234,7 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
-            //println!("Next token: {}", token);
+            println!("Next token: {}", token);
 
             let mut curr: ParseRoundNoMemo = ParseRoundNoMemo::new();
             curr.derive(&curr_lang, &language_list, *token, finite_state_automaton);
@@ -248,15 +254,15 @@ fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, Pa
             return Err(ParseError);
         }
 
-        //println!("{}", language_list);
+        println!("{}", language_list);
     }
 
 
     if let Some(mut last_lang) = language_list.pop_lang() {
         ParseRoundNoMemo::e_sim(&mut last_lang, &language_list, finite_state_automaton);
-        //println!("{}", language_list);
-        //println!("Last: {}", last_lang);
-        //println!("{}", memoize);
+        println!("{}", language_list);
+        //println!("{:?}", language_list);
+        println!("Last: {}", last_lang);
         Ok(last_lang)
     } else {
         //println!("{}", language_list);

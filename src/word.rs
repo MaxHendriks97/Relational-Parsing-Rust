@@ -45,6 +45,23 @@ impl Word {
         Word(symbols)
     }
 
+    pub fn from_string(string: &str) -> Word {
+        let mut symbols = Vec::new();
+        for c in string.chars() {
+            match c {
+                'e' => symbols.push(Symbol::Epsilon),
+                _ => symbols.push(
+                    if c.is_lowercase() {
+                        Symbol::Terminal(c)
+                    } else {
+                        Symbol::Nonterminal(c)
+                    }
+                ),
+            }
+        }
+        Word(symbols)
+    }
+
     pub fn from_single(symbol: Symbol) -> Word {
         Word(vec![symbol])
     }
@@ -103,6 +120,10 @@ impl Rule {
         Rule(nt, word)
     }
 
+    pub fn from_str(nt: Nonterminal, word: &str) -> Rule {
+        Rule(nt, Word::from_string(word))
+    }
+
     pub fn nt(&self) -> Nonterminal {
         self.0
     }
@@ -137,6 +158,14 @@ impl Rules {
 
     pub fn from_single(nt: Nonterminal, word: Word) -> Rules {
         Rules(vec![Rule::from(nt, word)])
+    }
+
+    pub fn from_string_vec(rules: Vec<(Nonterminal, &str)>) -> Rules {
+        let mut rule_vec = Vec::new();
+        for (nt, word) in rules {
+            rule_vec.push(Rule::from_str(nt, word));
+        }
+        Rules(rule_vec)
     }
 
     pub fn iter(&self) -> RulesIterator {
@@ -229,6 +258,28 @@ impl RulesSet {
         RulesSet(rules)
     }
 
+    pub fn from_rules(rules: Rules) -> RulesSet {
+        let mut set = RulesSet::new();
+        set.insert_rules(rules);
+        set
+    }
+
+    pub fn from_vec_array(rules: Vec<Vec<(Nonterminal, &str)>>) -> RulesSet {
+        let mut set = RulesSet::new();
+        for rule_vec in rules {
+            set.insert_rules(Rules::from_string_vec(rule_vec));
+        }
+        set
+    }
+
+    pub fn from_vec_slice(rules: &[Vec<(Nonterminal, &str)>]) -> RulesSet {
+        let mut set = RulesSet::new();
+        for rule_vec in rules {
+            set.insert_rules(Rules::from_string_vec(rule_vec.to_vec()));
+        }
+        set
+    }
+
     pub fn iter(&self) -> std::collections::btree_set::Iter<Rules> {
         self.0.iter()
     }
@@ -266,7 +317,10 @@ impl RulesSet {
     }
 
     pub fn prepend_rules(&self, rules: &Rules) -> RulesSet {
-        let mut rules_set = self.clone();
+        if self.is_empty() {
+            return RulesSet::from_rules(rules.clone());
+        }
+        let mut rules_set = RulesSet::new();
         for rules_ in self.iter() {
             rules_set.insert_rules(rules.concat(rules_));
         }

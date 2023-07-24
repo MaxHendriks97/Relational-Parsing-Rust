@@ -288,35 +288,41 @@ impl FiniteStateAutomaton {
             let starting_state: State = highest_state + 1;
             highest_state = starting_state;
             states.insert(starting_state);
-            let (_, new_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(&node, starting_state, None, highest_state, &mut states, &mut accepting_states, &mut edges);
+            let (_, new_highest_state, accepting_state, atomic_rules) = FiniteStateAutomaton::node_to_states(&node, starting_state, None, highest_state, &mut states, &mut accepting_states, &mut edges);
             highest_state = new_highest_state;
             accepting_states.insert(accepting_state);
 
-            atomic_to_state.add(Atomic::new(Symbol::Nonterminal(nonterminal), terminal), starting_state, RulesSet::new());
+            atomic_to_state.add(Atomic::new(Symbol::Nonterminal(nonterminal), terminal), starting_state, atomic_rules);
         }
 
         FiniteStateAutomaton{states, accepting_states, start, edges, atomic_to_state}
     }
 
-    // Returns, ending state, highest state, accepting state
-    pub fn node_to_states(node: &Node, starting_state: State, ending_state: Option<State>, highest_state: State, states: &mut States, accepting_states: &mut States, edges: &mut Edges) -> (State, State, State) {
-        if node.is_e_node() {
-            return (starting_state, highest_state, starting_state);
-        }
+    // Returns, ending state, highest state, accepting state, starting rules
+    pub fn node_to_states(node: &Node, starting_state: State, ending_state: Option<State>, highest_state: State, states: &mut States, accepting_states: &mut States, edges: &mut Edges) -> (State, State, State, RulesSet) {
         let mut curr_highest_state: State = highest_state;
         let mut accepting_state: State = State::new(1); //initialise to epsilon
+        let mut starting_rules: RulesSet = RulesSet::new();
+
+        //println!("Node: {:?}", node);
+
         match node{
             Node::Opt { nodes, kleene } => {
                 if *kleene {
                     // Ending state is starting state
                     for node in nodes {
                         if node.is_e_node() {
+                            let new_starting_rules: RulesSet;
+                            (_, _, _, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                             accepting_states.insert(starting_state);
                             continue;
                         }
-                        (_, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, starting_state, Some(starting_state), curr_highest_state, states, accepting_states, edges);
+                        let new_starting_rules: RulesSet;
+                        (_, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, Some(starting_state), curr_highest_state, states, accepting_states, edges);
+                        starting_rules.extend(new_starting_rules);
                     }
-                    return (starting_state, curr_highest_state, accepting_state);
+                    return (starting_state, curr_highest_state, accepting_state, starting_rules);
                 } else {
                     // Ending state is end_state.
                     // This may be null in the first iteration, so it may create a new state to be the ending state.
@@ -324,14 +330,19 @@ impl FiniteStateAutomaton {
                     let mut curr_ending_state: Option<State> = ending_state;
                     for node in nodes {
                         if node.is_e_node() {
+                            let new_starting_rules: RulesSet;
+                            (_, _, _, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                             accepting_states.insert(starting_state);
                             continue;
                         }
                         let new_ending_state: State;
-                        (new_ending_state, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, starting_state, curr_ending_state, curr_highest_state, states, accepting_states, edges);
+                        let new_starting_rules: RulesSet;
+                        (new_ending_state, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, curr_ending_state, curr_highest_state, states, accepting_states, edges);
                         curr_ending_state = Some(new_ending_state);
+                        starting_rules.extend(new_starting_rules);
                     }
-                    (curr_ending_state.unwrap_or_else(|| starting_state), curr_highest_state, accepting_state)
+                    (curr_ending_state.unwrap_or_else(|| starting_state), curr_highest_state, accepting_state, starting_rules)
                 }
             },
             Node::Seq { nodes, kleene } => {
@@ -342,34 +353,48 @@ impl FiniteStateAutomaton {
                     let mut peekable_nodes = nodes.iter().peekable();
                     while let Some(node) = peekable_nodes.next() {
                         if node.is_e_node() {
+                            let new_starting_rules: RulesSet;
+                            (_, _, _, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                             continue;
                         }
                         if peekable_nodes.peek().is_some() {
                             let new_starting_state: State;
-                            (new_starting_state, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            let new_starting_rules: RulesSet;
+                            (new_starting_state, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
                             curr_starting_state = new_starting_state;
+                            starting_rules.extend(new_starting_rules);
                         } else {
-                            (_, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, Some(starting_state), curr_highest_state, states, accepting_states, edges);
+                            let new_starting_rules: RulesSet;
+                            (_, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, Some(starting_state), curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                         }
                     }
-                    (starting_state, curr_highest_state, accepting_state)
+                    (starting_state, curr_highest_state, accepting_state, starting_rules)
                 } else {
                     // Ending state is None until last iteration, then ending state is end_state.
                     // curr_starting_state is the ending state of the previous iteration
                     let mut peekable_nodes = nodes.iter().peekable();
                     while let Some(node) = peekable_nodes.next() {
                         if node.is_e_node() {
+                            let new_starting_rules: RulesSet;
+                            (_, _, _, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                             continue;
                         }
                         if peekable_nodes.peek().is_some() {
                             let new_starting_state: State;
-                            (new_starting_state, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            let new_starting_rules: RulesSet;
+                            (new_starting_state, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, None, curr_highest_state, states, accepting_states, edges);
                             curr_starting_state = new_starting_state;
+                            starting_rules.extend(new_starting_rules);
                         } else {
-                            (_, curr_highest_state, accepting_state) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, ending_state, curr_highest_state, states, accepting_states, edges);
+                            let new_starting_rules: RulesSet;
+                            (_, curr_highest_state, accepting_state, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, curr_starting_state, ending_state, curr_highest_state, states, accepting_states, edges);
+                            starting_rules.extend(new_starting_rules);
                         }
                     }
-                    (starting_state, curr_highest_state, accepting_state)
+                    (starting_state, curr_highest_state, accepting_state, starting_rules)
                 }
             },
             Node::Word { word, rules, kleene } => {
@@ -377,6 +402,8 @@ impl FiniteStateAutomaton {
                 let mut peekable_word = word.iter().peekable();
                 let mut collected_rules: Rules = Rules::new();
                 let mut final_state: State = State::new(1); // initialise to epsilon
+                println!("word: {}", word);
+                println!("rules: {:?}", rules);
                 while let Some(symbol) = peekable_word.next() {
                     if peekable_word.peek().is_some() {
                         match symbol {
@@ -412,11 +439,13 @@ impl FiniteStateAutomaton {
                         match symbol {
                             RegexSymbol::AtomicLanguage(_, _) => panic!("Atomic language should not be in word"),
                             RegexSymbol::Nulled(nulled_rules) => {
-                                collected_rules.extend(nulled_rules.clone());
-                                collected_rules.extend(rules.clone());
+                                let mut res_rules = rules.clone();
+                                res_rules.extend(collected_rules);
+                                collected_rules = Rules::new();
+                                res_rules.extend(nulled_rules.clone());
                                 if *kleene {
                                     final_state = starting_state;
-                                    edges.insert(curr_state, Symbol::Epsilon, final_state, Some(collected_rules));
+                                    edges.insert(curr_state, Symbol::Epsilon, final_state, Some(res_rules));
                                     curr_state = starting_state;
                                 } else {
                                     final_state = ending_state.unwrap_or_else(|| {
@@ -426,10 +455,9 @@ impl FiniteStateAutomaton {
                                         states.insert(new_state);
                                         new_state
                                     });
-                                    edges.insert(curr_state, Symbol::Epsilon, final_state, Some(collected_rules));
+                                    edges.insert(curr_state, Symbol::Epsilon, final_state, Some(res_rules));
                                     curr_state = final_state;
                                 }
-                                collected_rules = Rules::new();
                             },
                             RegexSymbol::Nonterminal(nt) => {
                                 // First create an edge to a new state for the nonterminal
@@ -462,10 +490,12 @@ impl FiniteStateAutomaton {
                                 }
                             },
                             RegexSymbol::Terminal(t) => {
-                                collected_rules.extend(rules.clone());
+                                let mut res_rules: Rules = rules.clone();
+                                res_rules.extend(collected_rules);
+                                collected_rules = Rules::new();
                                 if *kleene {
                                     final_state = starting_state;
-                                    edges.insert(curr_state, Symbol::Terminal(*t), final_state, Some(collected_rules));
+                                    edges.insert(curr_state, Symbol::Terminal(*t), final_state, Some(res_rules));
                                     curr_state = starting_state;
                                 } else {
                                     final_state = ending_state.unwrap_or_else(|| {
@@ -475,16 +505,17 @@ impl FiniteStateAutomaton {
                                         states.insert(new_state);
                                         new_state
                                     });
-                                    edges.insert(curr_state, Symbol::Terminal(*t), final_state, Some(collected_rules));
+                                    edges.insert(curr_state, Symbol::Terminal(*t), final_state, Some(res_rules));
                                     curr_state = final_state;
                                 }
-                                collected_rules = Rules::new();
                             },
-                            RegexSymbol::Epsilon => panic!("Something probably went wrong"),
+                            RegexSymbol::Epsilon => {
+                                return (curr_state, curr_highest_state, final_state, RulesSet::from_rules(rules.clone()))
+                            },
                         }
                     }
                 }
-                (curr_state, curr_highest_state, final_state)
+                (curr_state, curr_highest_state, final_state, RulesSet::new())
             }
         }
     }
