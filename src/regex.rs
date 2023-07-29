@@ -107,6 +107,10 @@ impl Regex {
             unimplemented!("There are still waiting atomics: {:?}, there must be a circular dependency\nFinished atomics: {:?}", waiting_atomics, finished_atomics.keys());
         }
 
+        for (key, atomic) in finished_atomics.iter() {
+            println!("{:?}: {}", key, atomic);
+        }
+
         let mut res: Regex = Regex(HashMap::new());
         let mut res_changing = true;
 
@@ -115,7 +119,11 @@ impl Regex {
 
             let mut converted_atomics: Vec<(Nonterminal, Terminal)> = Vec::new();
             for (key, atomic) in finished_atomics.iter() {
+                println!("Atomic to node: {:?}, {}", key, atomic);
                 if let Some(node) = IntermediateAtomic::atomic_to_node(atomic.clone(), &res.0) {
+                    println!("node: {}", node);
+                    node.print_with_rules();
+                    println!();
                     res.0.insert(key.clone(), node);
                     converted_atomics.push(key.clone());
                     res_changing = true
@@ -228,47 +236,6 @@ impl fmt::Display for Regex {
     }
 }
 
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Node::Word { word, kleene, .. } => {
-                write!(f, "({})", word)?;
-                if *kleene {
-                    write!(f, "*")?;
-                }
-                Ok(())
-            },
-            Node::Opt { nodes, kleene } => {
-                write!(f, "(")?;
-                let mut iter = nodes.iter().peekable();
-                while let Some(node) = iter.next() {
-                    write!(f, "{}", node)?;
-                    if iter.peek().is_some() {
-                        write!(f, " + ")?;
-                    }
-                }
-                write!(f, ")")?;
-                if *kleene {
-                    write!(f, "*")?;
-                }
-                Ok(())
-            },
-            Node::Seq { nodes, kleene } => {
-                write!(f, "(")?;
-                let mut iter = nodes.iter().peekable();
-                while let Some(node) = iter.next() {
-                    write!(f, "{}", node)?;
-                }
-                write!(f, ")")?;
-                if *kleene {
-                    write!(f, "*")?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
 impl IntermediateAtomic {
     pub fn new(nonterminal: Nonterminal, terminal: Terminal, word_set: &HashSet<Word>, nullable_nonterminals: &HashMap<Nonterminal, RulesSet>) -> Option<IntermediateAtomic> {
         let mut direct: RegexWordRuleSet = RegexWordRuleSet::new();
@@ -305,6 +272,8 @@ impl IntermediateAtomic {
     pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>, waiting_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> isize {
         let mut finished = 1;
 
+        let mut new_different_atomic: RegexWordRuleSet = self.different_atomic.clone();
+
         for regex_word_rule in self.different_atomic.iter() {
             let regex_word = regex_word_rule.word();
             let regex_rules = regex_word_rule.rules();
@@ -313,14 +282,14 @@ impl IntermediateAtomic {
             match first_symbol {
                 RegexSymbol::AtomicLanguage(nt, t) => {
                     if let Some(finished_atomic) = finished_atomics.get(&(*nt, *t)) {
-                        let finished_direct = finished_atomic.direct.clone();
+                        //let finished_direct = finished_atomic.direct.clone();
 
-                        for finished_regex_word_rule in finished_direct.iter() {
-                            let new_regex_word = regex_word.not_first().concat(&finished_regex_word_rule.word());
-                            let new_regex_rules = regex_rules.clone().concat(&finished_regex_word_rule.rules());
+                        //for finished_regex_word_rule in finished_direct.iter() {
+                        //    let new_regex_word = regex_word.not_first().concat(&finished_regex_word_rule.word());
+                        //    let new_regex_rules = regex_rules.clone().concat(&finished_regex_word_rule.rules());
 
-                            self.direct.insert(RegexWordRule::new(new_regex_word, new_regex_rules));
-                        }
+                        //    self.direct.insert(RegexWordRule::new(new_regex_word, new_regex_rules));
+                        //}
                     } else if let Some(_) = waiting_atomics.get(&(*nt, *t)) {
                         finished = 0
                     } else {
@@ -331,40 +300,57 @@ impl IntermediateAtomic {
             }
         }
 
+        self.different_atomic = new_different_atomic;
+
         finished
     }
 
     fn atomic_to_node(atomic: IntermediateAtomic, finished_nodes: &HashMap<(Nonterminal, Terminal), Node>) -> Option<Node> {
-        if let Some(mut direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
-            for regex_word_rule in atomic.different_atomic.iter() {
-                let regex_word = regex_word_rule.word();
-                let first_symbol = regex_word.first();
-                match first_symbol {
-                    RegexSymbol::AtomicLanguage(nt, t) => {
-                        if let Some(finished_node) = finished_nodes.get(&(*nt, *t)) {
-                            direct_node.add_opt(finished_node.clone());
-                        } else {
-                            return None;
-                        }
-                    },
-                    _ => panic!("First symbol should be an atomic language: {:?}", first_symbol)
-                }
-            }
-            if let Some(recursive_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.recursive, true) {
-                // We have a recursive node, return a sequence with the direct and recursive node, recursive having kleene set to true
-                let new_recursive = match recursive_node {
-                    Node::Opt {nodes, ..} => Node::Opt{ nodes, kleene: true },
-                    Node::Word { word, rules, ..} => Node::Word { word, rules, kleene: true },
-                    Node::Seq { .. } => panic!(), // recursive_node cannot be a sequence
-                };
-                Some(Node::Seq { nodes: vec![direct_node, new_recursive], kleene: false })
-            } else {
-                // Return only direct node
-                Some(direct_node)
-            }
-        } else {
-            panic!("Could not make direct node with atomic: {:?}", atomic)
+        let mut opt_final_node: Option<Node> = None;
+        if let Some(direct_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.direct, false) {
+            opt_final_node = Some(direct_node);
         }
+        for regex_word_rule in atomic.different_atomic.iter() {
+            let regex_word = regex_word_rule.word();
+            let first_symbol = regex_word.first();
+            let not_first = regex_word.not_first();
+            match first_symbol {
+                RegexSymbol::AtomicLanguage(nt, t) => {
+                    if let Some(finished_node) = finished_nodes.get(&(*nt, *t)) {
+                        let mut new_node = finished_node.clone();
+                        if not_first.is_empty() {
+                            new_node.prepend_rules(regex_word_rule.rules())
+                        } else {
+                            new_node.concat_word_prepend_rules(regex_word, regex_word_rule.rules());
+                        }
+                        if let Some(mut final_node) = opt_final_node {
+                            final_node.add_opt(new_node);
+                            opt_final_node = Some(final_node);
+                        } else {
+                            opt_final_node = Some(new_node);
+                        }
+                    } else {
+                        return None;
+                    }
+                },
+                _ => panic!("First symbol should be an atomic language: {:?}", first_symbol)
+            }
+        }
+        if let Some(mut recursive_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.recursive, true) {
+            println!("Recursive node: {}", recursive_node);
+            if let Some(mut final_node) = opt_final_node {
+                recursive_node.set_kleene(true);
+                final_node.add_seq(recursive_node);
+                opt_final_node = Some(final_node);
+            } else {
+                return None;
+            }
+        }
+        if let Some(final_node) = opt_final_node {
+            println!("Final node: {}", final_node);
+            return Some(final_node)
+        }
+        opt_final_node
     }
 
     fn regex_word_rule_set_to_node(set: &RegexWordRuleSet, rec: bool) -> Option<Node> {
@@ -387,6 +373,10 @@ impl IntermediateAtomic {
             // Otherwise we will need an opt node
             Some(Node::Opt{nodes, kleene: false})
         }
+    }
+
+    fn regex_word(word: &RegexWord) -> Node {
+        Node::Word{word: word.clone(), rules: Rules::new(), kleene: false}
     }
 
     // Build new word set with nullings applied to regexword, with original word for record-keeping
@@ -499,7 +489,81 @@ impl IntermediateAtomic {
 
 }
 
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Node::Word { word, kleene, .. } => {
+                write!(f, "({})", word)?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            },
+            Node::Opt { nodes, kleene } => {
+                write!(f, "(")?;
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    write!(f, "{}", node)?;
+                    if iter.peek().is_some() {
+                        write!(f, " + ")?;
+                    }
+                }
+                write!(f, ")")?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            },
+            Node::Seq { nodes, kleene } => {
+                write!(f, "(")?;
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    write!(f, "{}", node)?;
+                }
+                write!(f, ")")?;
+                if *kleene {
+                    write!(f, "*")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl Node {
+    pub fn print_with_rules(&self) {
+        match self {
+            Node::Word { word, rules, .. } => {
+                print!("{}: {}", word, rules);
+            },
+            Node::Opt { nodes, kleene } => {
+                print!("(");
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    node.print_with_rules();
+                    if iter.peek().is_some() {
+                        print!(" + ");
+                    }
+                }
+                print!(")");
+                if *kleene {
+                    print!("*");
+                }
+            },
+            Node::Seq { nodes, kleene } => {
+                print!("(");
+                let mut iter = nodes.iter().peekable();
+                while let Some(node) = iter.next() {
+                    node.print_with_rules();
+                }
+                print!(")");
+                if *kleene {
+                    print!("*");
+                }
+            }
+        }
+    }
+
     pub fn new_word(word: RegexWord, rules: Rules, kleene: bool) -> Node {
         Node::Word{word, rules, kleene}
     }
@@ -516,6 +580,24 @@ impl Node {
         match self {
             Node::Word { word, .. } => word.is_e(),
             _ => false,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Node::Word { word, .. } => word.is_empty(),
+            Node::Opt { nodes, .. } => nodes.is_empty(),
+            Node::Seq { nodes, .. } => nodes.is_empty(),
+        }
+    }
+
+    pub fn concat_regex_word_rule(&mut self, word: &RegexWord, rules: &Rules) {
+        match self {
+            Node::Word { word: node_word, rules: node_rules, .. } => {
+                node_word.concat(word);
+                node_rules.concat(rules);
+            },
+            _ => panic!("Cannot concat regex word to non-word node"),
         }
     }
 
@@ -559,9 +641,90 @@ impl Node {
                 nodes.insert(other);
             },
             _ => {
+                if self.is_empty() {
+                    *self = other;
+                    return;
+                }
                 let mut nodes: BTreeSet<Node> = BTreeSet::new();
                 nodes.insert(other);
                 *self = Node::new_opt(nodes, false);
+            }
+        }
+    }
+
+    fn set_kleene(&mut self, kleene: bool) {
+        match self {
+            Node::Word { kleene: k, .. } => {
+                *k = kleene;
+            },
+            Node::Opt { kleene: k, .. } => {
+                *k = kleene;
+            },
+            Node::Seq { kleene: k, .. } => {
+                *k = kleene;
+            }
+        }
+    }
+
+    fn add_seq(&mut self, other: Node) {
+        match self {
+            Node::Seq { nodes, .. } => {
+                nodes.push(other);
+            },
+            _ => {
+                if self.is_empty() {
+                    *self = other;
+                    return;
+                }
+                let mut nodes: Vec<Node> = Vec::new();
+                nodes.push(self.clone());
+                nodes.push(other);
+                *self = Node::new_seq(nodes, false);
+            }
+        }
+    }
+
+    fn prepend_rules(&mut self, rules: &Rules) {
+        match self {
+            Node::Word { rules: r, .. } => {
+                *r = rules.concat(r);
+            },
+            Node::Opt { nodes, kleene } => {
+                let mut new_opt_node = Node::new_opt(BTreeSet::new(), *kleene);
+                for node in nodes.iter() {
+                    let mut new_node = node.clone();
+                    new_node.prepend_rules(rules);
+                    new_opt_node.add_opt(new_node)
+                }
+                *self = new_opt_node;
+            },
+            Node::Seq { nodes, .. } => {
+                if let Some(node) = nodes.first_mut() {
+                    node.prepend_rules(rules);
+                }
+            }
+        }
+    }
+
+    fn concat_word_prepend_rules(&mut self, regex_word: &RegexWord, rules: &Rules) {
+        match self {
+            Node::Word { word, rules: r, .. } => {
+                word.concat(regex_word);
+                *r = rules.concat(r);
+            },
+            Node::Opt { nodes, kleene } => {
+                let mut new_opt_node = Node::new_opt(BTreeSet::new(), *kleene);
+                for node in nodes.iter() {
+                    let mut new_node = node.clone();
+                    new_node.concat_word_prepend_rules(regex_word, rules);
+                    new_opt_node.add_opt(new_node)
+                }
+                *self = new_opt_node;
+            },
+            Node::Seq { nodes, .. } => {
+                for node in nodes {
+                    node.concat_word_prepend_rules(regex_word, rules);
+                }
             }
         }
     }

@@ -51,10 +51,10 @@ impl Word {
             match c {
                 'e' => symbols.push(Symbol::Epsilon),
                 _ => symbols.push(
-                    if c.is_lowercase() {
-                        Symbol::Terminal(c)
-                    } else {
+                    if c.is_uppercase() {
                         Symbol::Nonterminal(c)
+                    } else {
+                        Symbol::Terminal(c)
                     }
                 ),
             }

@@ -171,6 +171,10 @@ impl RegexWordRuleSet {
     pub fn contains(&self, regex_word_rule: &RegexWordRule) -> bool {
         self.0.contains(regex_word_rule)
     }
+
+    pub fn remove(&mut self, regex_word_rule: &RegexWordRule) {
+        self.0.remove(regex_word_rule);
+    }
 }
 
 impl fmt::Display for RegexWordRuleSet {

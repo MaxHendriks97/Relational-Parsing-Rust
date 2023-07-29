@@ -91,8 +91,9 @@ impl ParseRoundNoMemo {
                         }
                     }
                     if finite_state_automaton.has_edge(end_state) {
-                        lang.extend_edge(edge, res_rules_set.clone());
-                        to_simulate.push((edge, res_rules_set));
+                        let new_edge: language_list::Edge = language_list::Edge::new(*end_state, edge.depth());
+                        lang.extend_edge(new_edge, res_rules_set.clone());
+                        to_simulate.push((new_edge, res_rules_set));
                     }
                 }
             }

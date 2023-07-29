@@ -288,7 +288,11 @@ impl FiniteStateAutomaton {
             let starting_state: State = highest_state + 1;
             highest_state = starting_state;
             states.insert(starting_state);
+            println!("Building FSA for {}^({})", nonterminal, terminal);
+            node.print_with_rules();
+            println!();
             let (_, new_highest_state, accepting_state, atomic_rules) = FiniteStateAutomaton::node_to_states(&node, starting_state, None, highest_state, &mut states, &mut accepting_states, &mut edges);
+            println!("atomic_rules: {}", atomic_rules);
             highest_state = new_highest_state;
             accepting_states.insert(accepting_state);
 
@@ -402,8 +406,6 @@ impl FiniteStateAutomaton {
                 let mut peekable_word = word.iter().peekable();
                 let mut collected_rules: Rules = Rules::new();
                 let mut final_state: State = State::new(1); // initialise to epsilon
-                println!("word: {}", word);
-                println!("rules: {:?}", rules);
                 while let Some(symbol) = peekable_word.next() {
                     if peekable_word.peek().is_some() {
                         match symbol {
