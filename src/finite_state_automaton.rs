@@ -304,9 +304,6 @@ impl FiniteStateAutomaton {
         let mut accepting_state: State = State::new(1); //initialise to epsilon
         let mut starting_rules: RulesSet = RulesSet::new();
 
-        println!("Node: {}", node);
-        println!("Starting state: {}, ending state: {:?}", starting_state, ending_state);
-
         match node{
             Node::Opt { nodes, kleene } => {
                 if *kleene {
