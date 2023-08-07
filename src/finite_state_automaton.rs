@@ -288,11 +288,7 @@ impl FiniteStateAutomaton {
             let starting_state: State = highest_state + 1;
             highest_state = starting_state;
             states.insert(starting_state);
-            println!("Building FSA for {}^({})", nonterminal, terminal);
-            node.print_with_rules();
-            println!();
             let (_, new_highest_state, accepting_state, atomic_rules) = FiniteStateAutomaton::node_to_states(&node, starting_state, None, highest_state, &mut states, &mut accepting_states, &mut edges);
-            println!("atomic_rules: {}", atomic_rules);
             highest_state = new_highest_state;
             accepting_states.insert(accepting_state);
 
@@ -308,7 +304,8 @@ impl FiniteStateAutomaton {
         let mut accepting_state: State = State::new(1); //initialise to epsilon
         let mut starting_rules: RulesSet = RulesSet::new();
 
-        //println!("Node: {:?}", node);
+        println!("Node: {}", node);
+        println!("Starting state: {}, ending state: {:?}", starting_state, ending_state);
 
         match node{
             Node::Opt { nodes, kleene } => {
@@ -341,7 +338,7 @@ impl FiniteStateAutomaton {
                                 states.insert(curr_ending_state.unwrap());
                                 accepting_states.insert(curr_ending_state.unwrap());
                             }
-                            let (_, _, _, epsilon_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            let (_, _, _, epsilon_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, curr_ending_state, curr_highest_state, states, accepting_states, edges);
                             for rules in epsilon_rules.into_iter() {
                                 edges.insert(starting_state, Symbol::Epsilon, curr_ending_state.unwrap(), Some(rules));
                             }
@@ -470,7 +467,7 @@ impl FiniteStateAutomaton {
                             },
                             RegexSymbol::Nonterminal(nt) => {
                                 // First create an edge to a new state for the nonterminal
-                                let new_state = curr_highest_state + 1;
+                                let mut new_state = curr_highest_state + 1;
                                 curr_highest_state = new_state;
                                 states.insert(new_state);
                                 if collected_rules.is_empty() {
@@ -489,7 +486,7 @@ impl FiniteStateAutomaton {
                                 } else {
                                     final_state = ending_state.unwrap_or_else(|| {
                                         // If ending state is None, then we need to create a new state
-                                        let new_state = curr_highest_state + 1;
+                                        new_state = curr_highest_state + 1;
                                         curr_highest_state = new_state;
                                         states.insert(new_state);
                                         new_state

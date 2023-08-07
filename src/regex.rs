@@ -107,10 +107,6 @@ impl Regex {
             unimplemented!("There are still waiting atomics: {:?}, there must be a circular dependency\nFinished atomics: {:?}", waiting_atomics, finished_atomics.keys());
         }
 
-        for (key, atomic) in finished_atomics.iter() {
-            println!("{:?}: {}", key, atomic);
-        }
-
         let mut res: Regex = Regex(HashMap::new());
         let mut res_changing = true;
 
@@ -119,11 +115,7 @@ impl Regex {
 
             let mut converted_atomics: Vec<(Nonterminal, Terminal)> = Vec::new();
             for (key, atomic) in finished_atomics.iter() {
-                println!("Atomic to node: {:?}, {}", key, atomic);
                 if let Some(node) = IntermediateAtomic::atomic_to_node(atomic.clone(), &res.0) {
-                    println!("node: {}", node);
-                    node.print_with_rules();
-                    println!();
                     res.0.insert(key.clone(), node);
                     converted_atomics.push(key.clone());
                     res_changing = true
@@ -337,7 +329,6 @@ impl IntermediateAtomic {
             }
         }
         if let Some(mut recursive_node) = IntermediateAtomic::regex_word_rule_set_to_node(&atomic.recursive, true) {
-            println!("Recursive node: {}", recursive_node);
             if let Some(mut final_node) = opt_final_node {
                 recursive_node.set_kleene(true);
                 final_node.add_seq(recursive_node);
@@ -347,7 +338,6 @@ impl IntermediateAtomic {
             }
         }
         if let Some(final_node) = opt_final_node {
-            println!("Final node: {}", final_node);
             return Some(final_node)
         }
         opt_final_node
