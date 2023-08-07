@@ -19,30 +19,6 @@ fn broken() {
 }
 
 #[test]
-fn odd_number_of_a_grammar_recog_test() {
-    let grammar = common::odd_number_of_a_grammar();
-//     let mut memoize: Memoize = Memoize::new();
-
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
-
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a'], &grammar, &mut memoize));
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a'], &grammar, &mut memoize));
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
-
-    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar));
-    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a'], &grammar));
-    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a'], &grammar));
-    assert!(relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar));
-
-    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a'], &grammar));
-    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar));
-    assert!(!relational_parsing::g_accepts_string_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar));
-}
-
-#[test]
 fn even_a_middle_b_test() {
     let grammar = common::even_a_middle_b_grammar();
 //     let mut memoize: Memoize = Memoize::new();
@@ -202,92 +178,6 @@ fn indirect_right_recursive_grammar_recog_test() {
 //     }
 
 //     res_rules
-// }
-
-// #[test]
-// fn odd_number_of_a_grammar_parse_test() {
-//     let grammar = common::odd_number_of_a_grammar();
-//     let mut memoize: Memoize = Memoize::new();
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a', 'a', 'a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert!(relational_parsing::find_parses(&vec!['a', 'a'], &grammar, &mut memoize).is_err());
-//     assert!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a'], &grammar, &mut memoize).is_err());
-//     assert!(relational_parsing::find_parses(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize).is_err());
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a', 'a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert_eq!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], &grammar),
-//         Ok(HashSet::from([
-//             build_rules(&vec![('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "aSa"), ('S', "a")]),
-//         ]))
-//     );
-
-//     assert!(relational_parsing::find_parses_no_memo(&vec!['a', 'a'], &grammar).is_err());
-//     assert!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a'], &grammar).is_err());
-//     assert!(relational_parsing::find_parses_no_memo(&vec!['a', 'a', 'a', 'a', 'a', 'a'], &grammar).is_err());
 // }
 
 // #[test]

@@ -334,10 +334,17 @@ impl FiniteStateAutomaton {
                     let mut curr_ending_state: Option<State> = ending_state;
                     for node in nodes {
                         if node.is_e_node() {
-                            let new_starting_rules: RulesSet;
-                            (_, _, _, new_starting_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, None, curr_highest_state, states, accepting_states, edges);
-                            starting_rules.extend(new_starting_rules);
-                            accepting_states.insert(starting_state);
+                            // if no ending state yet and more than one opt_node, generate an ending state and create an epsilon transition to it from the starting state
+                            if curr_ending_state.is_none() {
+                                curr_highest_state = curr_highest_state + 1;
+                                curr_ending_state = Some(curr_highest_state);
+                                states.insert(curr_ending_state.unwrap());
+                                accepting_states.insert(curr_ending_state.unwrap());
+                            }
+                            let (_, _, _, epsilon_rules) = FiniteStateAutomaton::node_to_states(node, starting_state, None, curr_highest_state, states, accepting_states, edges);
+                            for rules in epsilon_rules.into_iter() {
+                                edges.insert(starting_state, Symbol::Epsilon, curr_ending_state.unwrap(), Some(rules));
+                            }
                             continue;
                         }
                         let new_ending_state: State;
