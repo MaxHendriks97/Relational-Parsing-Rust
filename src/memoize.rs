@@ -13,6 +13,7 @@ pub type NewMemPart = HashMap<Edge, (MemEdges, Option<(Depth, RulesSet)>)>;
 pub type MemPart = HashMap<Edge, MemEdges>;
 pub type MemParses = RulesSet;
 
+#[derive(Debug)]
 pub struct MemoBuilder {
     prep_deriv_memo: MemPart, // -> extra_lang_memo
     deriv_memo: MemPart, // -> memo

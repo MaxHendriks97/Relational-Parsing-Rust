@@ -6,11 +6,13 @@ use std::collections::{HashSet, HashMap, BTreeMap};
 
 use crate::*;
 
+#[derive(Debug)]
 pub struct ParseRound {
     deriv: Option<Language>,
     prep_deriv: Option<Language>,
     prep: Option<Language>,
     memo: MemoBuilder,
+
 }
 
 impl ParseRound {
@@ -180,6 +182,8 @@ impl ParseRound {
             }
         }
 
+        //println!("edge_to_edges: {:?}", edge_to_edges);
+
         (ret, edge_to_edges)
     }
 
@@ -222,14 +226,24 @@ impl ParseRound {
                     for (edge, applied_rules_set) in prep_deriv.edges_ref().iter() {
                         let new_edge = language_list::Edge::new(edge.state(), edge.depth() + target_depth);
                         prep.extend_edge(new_edge, applied_rules_set.clone());
-                        self.memo.extend_prepend_memo(*edge, new_edge, finite_state_automaton.is_accepting(&edge.state()), applied_rules_set.clone());
+                    }
+                    for (memedge, edges) in prep_deriv_mempart.iter() {
+                        for ((edge, accepting), mem_rules) in edges.iter() {
+                            let new_edge = language_list::Edge::new(edge.state(), edge.depth() + target_depth);
+                            self.memo.extend_prepend_memo(*memedge, new_edge, *accepting, mem_rules.clone());
+                        }
                     }
                 } else {
                     for rules in atomic.1.iter() {
                         for (edge, applied_rules_set) in prep_deriv.edges_ref().iter() {
                             let new_edge = language_list::Edge::new(edge.state(), edge.depth() + target_depth);
                             prep.extend_edge(new_edge, applied_rules_set.prepend_rules(rules));
-                            self.memo.extend_prepend_memo(*edge, new_edge, finite_state_automaton.is_accepting(&edge.state()), applied_rules_set.prepend_rules(rules));
+                        }
+                        for (memedge, edges) in prep_deriv_mempart.iter() {
+                            for ((edge, accepting), mem_rules) in edges.iter() {
+                                let new_edge = language_list::Edge::new(edge.state(), edge.depth() + target_depth);
+                                self.memo.extend_prepend_memo(*memedge, new_edge, *accepting, mem_rules.prepend_rules(rules));
+                            }
                         }
                     }
                 }
@@ -354,7 +368,7 @@ pub fn parse(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memo
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
-            //println!("Next token: {}", token);
+            println!("Next token: {}", token);
 
             //if let Some(memo) = memoize.get_memo(curr_lang.make_mem_edges(), token) {
             if let Some(memo) = memoize.get_memo(curr_lang.edges_ref().keys().copied().collect(), *token) {
@@ -384,7 +398,7 @@ pub fn parse(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memo
                 }
             }
             
-            //println!("End lang_list: {}", language_list);
+            println!("End lang_list: {}", language_list);
             //println!("{}", memoize);
 
         } else {
