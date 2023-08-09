@@ -1,6 +1,6 @@
 use relational_parsing::{
     self,
-    RulesSet, Terminal, ParseError
+    RulesSet, Terminal, ParseError, Memoize
 };
 
 mod common;
@@ -50,6 +50,26 @@ fn get_test_cases() -> [(Vec<Terminal>, Result<RulesSet, ParseError>); 9] {
 }
 
 #[test]
+fn memo_recog() {
+    let grammar = common::three_rule_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert!(relational_parsing::g_accepts_string(&input, &grammar, &mut Memoize::new()) == expected.is_ok());
+    }
+}
+
+#[test]
+fn memo_parse() {
+    let grammar = common::three_rule_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert_eq!(relational_parsing::find_parses(&input, &grammar, &mut Memoize::new()), expected);
+    }
+}
+
+#[test]
 fn three_rule_grammar_recog_test() {
     let grammar = common::three_rule_grammar();
     let test_cases = get_test_cases();
@@ -57,19 +77,6 @@ fn three_rule_grammar_recog_test() {
     for (input, expected) in test_cases {
         assert!(relational_parsing::g_accepts_string_no_memo(&input, &grammar) == expected.is_ok());
     }
-//     let mut memoize: Memoize = Memoize::new();
-
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'b'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'b', 'b', 'a', 'b'], &grammar, &mut memoize));
-//     assert!(relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'b', 'a', 'b', 'a', 'b'], &grammar, &mut memoize));
-
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a', 'b'], &grammar, &mut memoize));
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'b', 'b'], &grammar, &mut memoize));
-//     assert!(!relational_parsing::g_accepts_string(&vec!['a', 'a', 'a', 'a', 'a'], &grammar, &mut memoize));
-
 }
 
  #[test]
