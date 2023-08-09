@@ -19,6 +19,26 @@ fn get_test_cases() -> [(Vec<Terminal>, Result<RulesSet, ParseError>); 7] {
 }
 
 #[test]
+fn memo_recog() {
+    let grammar = common::odd_number_of_a_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert!(relational_parsing::g_accepts_string(&input, &grammar, &mut relational_parsing::Memoize::new()) == expected.is_ok());
+    }
+}
+
+#[test]
+fn memo_parse() {
+    let grammar = common::odd_number_of_a_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert_eq!(relational_parsing::find_parses(&input, &grammar, &mut relational_parsing::Memoize::new()), expected);
+    }
+}
+
+#[test]
 fn odd_nr_of_a_grammar_recog_test() {
     let grammar = common::odd_number_of_a_grammar();
     //     let mut memoize: Memoize = Memoize::new();
