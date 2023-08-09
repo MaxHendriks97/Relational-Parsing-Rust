@@ -1,6 +1,6 @@
 use relational_parsing::{
     self,
-    RulesSet, Terminal, ParseError
+    RulesSet, Terminal, ParseError, Memoize
 };
 
 mod common;
@@ -12,6 +12,26 @@ fn get_test_cases() -> [(Vec<Terminal>, Result<RulesSet, ParseError>); 4] {
         (vec!['a', 'a', 'a'], Ok(RulesSet::from_vec_slice(&[(vec![('A', "aA"), ('A', "aA"), ('A', "a")])]))),
         (vec!['a', 'a', 'a', 'a'], Ok(RulesSet::from_vec_slice(&[(vec![('A', "aA"), ('A', "aA"), ('A', "aA"), ('A', "a")])]))),
     ]
+}
+
+#[test]
+fn memo_recog() {
+    let grammar = common::direct_right_recursive_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert!(relational_parsing::g_accepts_string(&input, &grammar, &mut Memoize::new()) == expected.is_ok());
+    }
+}
+
+#[test]
+fn memo_parse() {
+    let grammar = common::direct_right_recursive_grammar();
+    let test_cases = get_test_cases();
+
+    for (input, expected) in test_cases {
+        assert_eq!(relational_parsing::find_parses(&input, &grammar, &mut Memoize::new()), expected);
+    }
 }
 
 #[test]
