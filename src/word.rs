@@ -335,6 +335,9 @@ impl RulesSet {
     }
 
     pub fn concatenate_rules_set(&self, other: &RulesSet) -> RulesSet {
+        if self.is_empty() {
+            return other.clone();
+        }
         let mut rules_set = RulesSet::new();
         for rules in self.iter() {
             rules_set.extend(other.prepend_rules(rules));
