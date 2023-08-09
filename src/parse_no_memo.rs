@@ -222,9 +222,6 @@ impl ParseRoundNoMemo {
 
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct ParseError;
-
 fn parse(token_string: &Vec<Terminal>, grammar: &Grammar) -> Result<Language, ParseError> {
     let finite_state_automaton: &FiniteStateAutomaton = &grammar.finite_state_automaton;
     let mut language_list: LanguageList = LanguageList::new();

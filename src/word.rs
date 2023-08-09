@@ -242,7 +242,7 @@ impl fmt::Display for RulesSet {
         while let Some(rules) = peekable.next() {
             write!(f, "{}", rules)?;
             if peekable.peek().is_some() {
-                write!(f, ", ")?;
+                write!(f, ",\n")?;
             }
         }
         write!(f, "}}")

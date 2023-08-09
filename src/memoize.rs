@@ -1,17 +1,17 @@
 //! # Memoize
 //! 
 //! The `memoize` module defines the data structures and methods used for memoization during the parsing effort.
-use std::collections::{HashSet, HashMap, BTreeSet};
+
+use std::collections::{HashMap, BTreeSet};
 use std::fmt;
 
-use crate::language_list::CompletedParses;
 use crate::word::*;
-use crate::*;
+use crate::language_list::{Edge, Depth};
 
 pub type MemEdges = HashMap<(Edge, bool), RulesSet>;
 pub type NewMemPart = HashMap<Edge, (MemEdges, Option<(Depth, RulesSet)>)>;
 pub type MemPart = HashMap<Edge, MemEdges>;
-pub type MemParses = CompletedParses;
+pub type MemParses = RulesSet;
 
 pub struct MemoBuilder {
     prep_deriv_memo: MemPart, // -> extra_lang_memo
@@ -33,7 +33,7 @@ impl MemoBuilder {
 
     pub fn insert_prepend_edges(&mut self, edge: Edge, accepting: bool, opt_rules: Option<Rules>) {
         if let Some(rules) = opt_rules {
-            self.prep_edges.entry((edge, accepting)).or_default().insert(rules);
+            self.prep_edges.entry((edge, accepting)).or_default().insert_rules(rules);
         } else {
             self.prep_edges.entry((edge, accepting)).or_default();
         }
@@ -48,11 +48,11 @@ impl MemoBuilder {
     }
 
     pub fn insert_prep_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules: Rules) {
-        self.prep_deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().insert(rules);
+        self.prep_deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().insert_rules(rules);
     }
 
-    pub fn extend_prep_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules_set: HashSet<Rules>) {
-        self.prep_deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().extend(rules_set);
+    pub fn extend_prep_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules_set: RulesSet) {
+        self.prep_deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default() .extend(rules_set);
     }
 
     pub fn concat_prep_deriv_memo(&mut self, mempart: MemPart) {
@@ -63,16 +63,24 @@ impl MemoBuilder {
         }
     }
 
-    pub fn insert_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules: Rules) {
-        self.deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().insert(rules);
+    pub fn insert_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, opt_rules: Option<Rules>) {
+        if let Some(rules) = opt_rules {
+            self.deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().insert_rules(rules);
+        } else {
+            self.deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default();
+        }
     }
 
-    pub fn extend_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules_set: HashSet<Rules>) {
+    pub fn extend_deriv_memo(&mut self, memedge: Edge, edge: Edge, accepting: bool, rules_set: RulesSet) {
         self.deriv_memo.entry(memedge).or_default().entry((edge, accepting)).or_default().extend(rules_set);
     }
 
-    pub fn insert_deriv_accepting(&mut self, memedge: Edge, rules: Rules) {
-        self.deriv_accepting.entry(memedge).or_default().insert(rules);
+    pub fn insert_deriv_accepting(&mut self, memedge: Edge, opt_rules: Option<Rules>) {
+        if let Some(rules) = opt_rules {
+            self.deriv_accepting.entry(memedge).or_default().insert_rules(rules);
+        } else {
+            self.deriv_accepting.entry(memedge).or_default();
+        }
     }
 
     pub fn extend_deriv_accepting(&mut self, memedge: Edge, rules_set: RulesSet) {
@@ -92,9 +100,9 @@ impl MemoBuilder {
 
         if !self.prep_deriv_memo.is_empty() {
             for (memedge, edges) in self.prep_memo {
-                for (((source_state, dest_depth), accepting), rules) in edges {
+                for ((edge, accepting), rules) in edges {
                     //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
-                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry((Edge::new(edge.state(), edge.depth() - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
             if self.no_pops > 0 {
@@ -105,39 +113,39 @@ impl MemoBuilder {
             }
 
             for (memedge, edges) in self.deriv_memo {
-                for (((source_state, dest_depth), accepting), rules) in edges {
+                for ((edge, accepting), rules) in edges {
                     //memo.entry(memedge).or_default().entry(((source_state, dest_depth + 1 - self.no_pops), accepting)).or_default().extend(rules);
-                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth + 1 - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry((Edge::new(edge.state(), edge.depth() + 1 - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
-            for ((state, depth), rules_set) in self.deriv_accepting {
+            for (edge, rules_set) in self.deriv_accepting {
                 //memo_accepting.insert((state, depth), (depth + 1 - self.no_pops, rules_set));
-                new_memo.entry((state, depth)).or_default().1 = Some((depth + 1 - self.no_pops, rules_set));
+                new_memo.entry(Edge::new(edge.state(), edge.depth())).or_default().1 = Some((edge.depth() + 1 - self.no_pops, rules_set));
             }
         } else {
             for (memedge, edges) in self.prep_memo {
-                for (((source_state, dest_depth), accepting), rules) in edges {
+                for ((edge, accepting), rules) in edges {
                     //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
-                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules)
+                    new_memo.entry(memedge).or_default().0.entry((Edge::new(edge.state(), edge.depth() - self.no_pops), accepting)).or_default().extend(rules)
                 }
             }
             extra_lang_memo = None;
 
             for (memedge, edges) in self.deriv_memo {
-                for (((source_state, dest_depth), accepting), rules) in edges {
+                for ((edge, accepting), rules) in edges {
                     //memo.entry(memedge).or_default().entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
-                    new_memo.entry(memedge).or_default().0.entry(((source_state, dest_depth - self.no_pops), accepting)).or_default().extend(rules);
+                    new_memo.entry(memedge).or_default().0.entry((Edge::new(edge.state(), edge.depth() - self.no_pops), accepting)).or_default().extend(rules);
                 }
             }
-            for ((state, depth), rules_set) in self.deriv_accepting {
+            for (edge, rules_set) in self.deriv_accepting {
                 //memo_accepting.insert((state, depth), (depth - self.no_pops, rules_set));
-                new_memo.entry((state, depth)).or_default().1 = Some((depth - self.no_pops, rules_set));
+                new_memo.entry(Edge::new(edge.state(), edge.depth())).or_default().1 = Some((edge.depth() - self.no_pops, rules_set));
             }
         }
 
         let mut extra_edges: MemEdges = HashMap::new();
-        for (((source_state, dest_depth), accepting), rules_set) in self.prep_edges {
-            extra_edges.insert(((source_state, dest_depth - self.no_pops), accepting), rules_set);
+        for ((edge, accepting), rules_set) in self.prep_edges {
+            extra_edges.insert((Edge::new(edge.state(), edge.depth() - self.no_pops), accepting), rules_set);
         }
 
         Memo {extra_lang_memo, new_memo, memo, memo_accepting, extra_edges, no_pops: self.no_pops}
@@ -206,7 +214,7 @@ impl fmt::Display for Memoize {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for ((edge_set, terminal), memo) in &self.mem {
             for edge in edge_set {
-                write!(f, "({}, {}), ", edge.0, edge.1)?;
+                write!(f, "({}, {}), ", edge.state(), edge.depth())?;
             }
             write!(f, "{}:\n", terminal)?;
             println!("{}", memo);
