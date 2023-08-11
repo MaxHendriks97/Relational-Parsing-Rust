@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
@@ -105,10 +104,10 @@ fn generate_rule_sets(grammar: &Grammar) -> (HashMap<Nonterminal, HashSet<(Word,
     let mut neutral_rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
     let mut negative_rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
 
-    for (nonterm, word_set) in &grammar.rules {
+    for (nonterm, word_set) in grammar.rules.iter() {
         for word in word_set {
             let mut curr_nonterm_count: usize = 0;
-            for symb in word {
+            for symb in word.iter() {
                 if let Symbol::Nonterminal(_) = symb {
                     curr_nonterm_count += 1;
                 }
@@ -161,30 +160,30 @@ fn try_add(positive_rules: &HashMap<Nonterminal, HashSet<(Word, usize)>>, neutra
     }
 }
 
-fn push_reducing_rule(rule_set: &HashSet<Vec<Symbol>>, todo: &mut VecDeque<Symbol>, nonterm_count: &mut usize, rng: &mut ThreadRng) {
-    let sampling_vec: Vec<&Vec<Symbol>> = rule_set.into_iter().collect();
+fn push_reducing_rule(rule_set: &HashSet<Word>, todo: &mut VecDeque<Symbol>, nonterm_count: &mut usize, rng: &mut ThreadRng) {
+    let sampling_vec: Vec<&Word> = rule_set.into_iter().collect();
     if let Some(random_rule) = sampling_vec.get(rng.gen_range(0..sampling_vec.len())) {
         prepend_rule(random_rule, todo);
         *nonterm_count -= 1;
     }
 }
 
-fn push_adding_rule(rule_set: &HashSet<(Vec<Symbol>, usize)>, todo: &mut VecDeque<Symbol>, nonterm_count: &mut usize, rng: &mut ThreadRng) {
-    let sampling_vec: Vec<&(Vec<Symbol>, usize)> = rule_set.into_iter().collect();
+fn push_adding_rule(rule_set: &HashSet<(Word, usize)>, todo: &mut VecDeque<Symbol>, nonterm_count: &mut usize, rng: &mut ThreadRng) {
+    let sampling_vec: Vec<&(Word, usize)> = rule_set.into_iter().collect();
     if let Some((random_rule, new_nonterm_count)) = sampling_vec.get(rng.gen_range(0..sampling_vec.len())) {
         prepend_rule(random_rule, todo);
         *nonterm_count += new_nonterm_count;
     }
 }
 
-fn push_neutral_rule(rule_set: &HashSet<Vec<Symbol>>, todo: &mut VecDeque<Symbol>, rng: &mut ThreadRng) {
-    let sampling_vec: Vec<&Vec<Symbol>> = rule_set.into_iter().collect();
+fn push_neutral_rule(rule_set: &HashSet<Word>, todo: &mut VecDeque<Symbol>, rng: &mut ThreadRng) {
+    let sampling_vec: Vec<&Word> = rule_set.into_iter().collect();
     if let Some(random_rule) = sampling_vec.get(rng.gen_range(0..sampling_vec.len())) {
         prepend_rule(random_rule, todo);
     }
 }
 
-fn prepend_rule(rule: &Vec<Symbol>, todo: &mut VecDeque<Symbol>) {
+fn prepend_rule(rule: &Word, todo: &mut VecDeque<Symbol>) {
     let mut temprule: Vec<Symbol> = rule.to_vec();
     while let Some(symbol) = temprule.pop() {
         todo.push_front(symbol);

@@ -6,103 +6,121 @@ use std::io::{prelude::*, BufReader};
 
 use std::time::{Duration, Instant};
 
-use relational_parsing::{Symbol, Nonterminal, Terminal, Word, Grammar, find_parses_no_memo, parse_count_memo};
+use relational_parsing::{Symbol, Nonterminal, Terminal, Word, Grammar, find_parses_no_memo, GrammarRules};
 use relational_parsing::find_parses;
+
 
 pub fn basic_relational_parsing_example_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
     let start: Nonterminal = 'S';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('S', HashSet::from([
-        vec![Symbol::Terminal('a')],
-        vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('S', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')])
     ]));
-    Grammar::new(terminals, nonterminals, start, rules)
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
 
 pub fn e_rule_relational_parsing_example_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b', 'c']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
     let start: Nonterminal = 'S';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('S', HashSet::from([
-        vec![Symbol::Terminal('a')],
-        vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-        vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')],
-        vec![Symbol::Epsilon]
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('S', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('b'), Symbol::Nonterminal('S'), Symbol::Terminal('c')]),
+        Word::from(vec![Symbol::Epsilon])
     ]));
-    Grammar::new(terminals, nonterminals, start, rules)
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
+}
+
+pub fn three_rule_grammar() -> Grammar {
+    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
+    let start: Nonterminal = 'S';
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('S', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('b')]),
+        Word::from(vec![Symbol::Nonterminal('S'), Symbol::Terminal('a'), Symbol::Terminal('b')]),
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Terminal('a'), Symbol::Terminal('a')]),
+    ]));
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
+}
+
+pub fn difficult_bottom_up_grammar() -> Grammar {
+    let terminals: HashSet<Terminal> = HashSet::from(['a', '+', '-']);
+    let nonterminals: HashSet<Nonterminal> = HashSet::from(['S', 'E', 'F', 'Q']);
+    let start: Nonterminal = 'S';
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('S', HashSet::from([Word::from(vec![Symbol::Nonterminal('E')])]));
+    grammar_rules.insert_word_set('E', HashSet::from([
+        Word::from(vec![Symbol::Nonterminal('E'), Symbol::Nonterminal('Q'), Symbol::Nonterminal('F')]),
+        Word::from(vec![Symbol::Nonterminal('F')])
+    ]));
+    grammar_rules.insert_word_set('F', HashSet::from([Word::from(vec![Symbol::Terminal('a')])]));
+    grammar_rules.insert_word_set('Q', HashSet::from([
+        Word::from(vec![Symbol::Terminal('+')]),
+        Word::from(vec![Symbol::Terminal('-')]),
+    ]));
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
 
 pub fn odd_number_of_a_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['S']);
     let start: Nonterminal = 'S';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('S', HashSet::from([
-        vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')],
-        vec![Symbol::Terminal('a')]
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('S', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Nonterminal('S'), Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Terminal('a')])
     ]));
-    Grammar::new(terminals, nonterminals, start, rules)
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
 
 pub fn direct_left_recursive_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['A']);
     let start: Nonterminal = 'A';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('A', HashSet::from([
-        vec![Symbol::Nonterminal('A'), Symbol::Terminal('a')],
-        vec![Symbol::Epsilon]
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('A', HashSet::from([
+        Word::from(vec![Symbol::Nonterminal('A'), Symbol::Terminal('a')]),
+        Word::from(vec![Symbol::Epsilon]),
     ]));
-    Grammar::new(terminals, nonterminals, start, rules)
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
 
-pub fn indirect_left_recursive_grammar() -> Grammar {
-    let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
-    let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B']);
-    let start: Nonterminal = 'A';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('A', HashSet::from([
-        vec![Symbol::Nonterminal('B'), Symbol::Terminal('a')],
-        vec![Symbol::Terminal('a')],
-    ]));
-    rules.insert('B', HashSet::from([
-        vec![Symbol::Nonterminal('A'), Symbol::Terminal('b')],
-        vec![Symbol::Terminal('b')],
-    ]));
-    Grammar::new(terminals, nonterminals, start, rules) 
-}
 
 pub fn direct_right_recursive_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['A']);
     let start: Nonterminal = 'A';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('A', HashSet::from([
-        vec![Symbol::Terminal('a'), Symbol::Nonterminal('A')],
-        vec![Symbol::Terminal('a')],
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('A', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Nonterminal('A')]),
+        Word::from(vec![Symbol::Terminal('a')]),
     ]));
-    Grammar::new(terminals, nonterminals, start, rules) 
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
 
 pub fn indirect_right_recursive_grammar() -> Grammar {
     let terminals: HashSet<Terminal> = HashSet::from(['a', 'b']);
     let nonterminals: HashSet<Nonterminal> = HashSet::from(['A', 'B']);
     let start: Nonterminal = 'A';
-    let mut rules: HashMap<Nonterminal, HashSet<Word>> = HashMap::new();
-    rules.insert('A', HashSet::from([
-        vec![Symbol::Terminal('a'), Symbol::Nonterminal('B')],
-        vec![Symbol::Terminal('a')],
+    let mut grammar_rules: GrammarRules = GrammarRules::new();
+    grammar_rules.insert_word_set('A', HashSet::from([
+        Word::from(vec![Symbol::Terminal('a'), Symbol::Nonterminal('B')]),
+        Word::from(vec![Symbol::Terminal('a')]),
     ]));
-    rules.insert('B', HashSet::from([
-        vec![Symbol::Terminal('b'), Symbol::Nonterminal('A')],
-        vec![Symbol::Terminal('b')],
+    grammar_rules.insert_word_set('B', HashSet::from([
+        Word::from(vec![Symbol::Terminal('b'), Symbol::Nonterminal('A')]),
+        Word::from(vec![Symbol::Terminal('b')]),
     ]));
-    Grammar::new(terminals, nonterminals, start, rules)
+    Grammar::new(terminals, nonterminals, start, grammar_rules)
 }
+
 
 fn parse_grammars(c: &mut Criterion) {
     let grammars: Vec<(Grammar, &str)> = vec![
@@ -110,7 +128,6 @@ fn parse_grammars(c: &mut Criterion) {
         (e_rule_relational_parsing_example_grammar(), "e_rule.streams"),
         (odd_number_of_a_grammar(), "odd_nr_a.streams"),
         (direct_left_recursive_grammar(), "direct_left.streams"),
-        (indirect_left_recursive_grammar(), "indirect_left.streams"),
         (direct_right_recursive_grammar(), "direct_right.streams"),
         (indirect_right_recursive_grammar(), "indirect_right.streams")
     ];

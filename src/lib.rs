@@ -16,5 +16,5 @@ mod parse;
 pub use parse::*;
 mod parse_no_memo;
 pub use parse_no_memo::*;
-// mod token_stream_generator;
-// pub use token_stream_generator::*;
+mod token_stream_generator;
+pub use token_stream_generator::*;

@@ -85,6 +85,10 @@ impl Word {
     pub fn equals(&self, other: &Word) -> bool {
         self.0 == other.0
     }
+
+    pub fn to_vec(&self) -> Vec<Symbol> {
+        self.0.clone()
+    }
 }
 
 pub struct WordIterator<'a> {

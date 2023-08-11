@@ -368,7 +368,7 @@ pub fn parse(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memo
 
     for token in token_string {
         if let Some(curr_lang) = language_list.pop_lang() {
-            println!("Next token: {}", token);
+            //println!("Next token: {}", token);
 
             //if let Some(memo) = memoize.get_memo(curr_lang.make_mem_edges(), token) {
             if let Some(memo) = memoize.get_memo(curr_lang.edges_ref().keys().copied().collect(), *token) {
@@ -398,7 +398,7 @@ pub fn parse(token_string: &Vec<Terminal>, grammar: &Grammar, memoize: &mut Memo
                 }
             }
             
-            println!("End lang_list: {}", language_list);
+            //println!("End lang_list: {}", language_list);
             //println!("{}", memoize);
 
         } else {
