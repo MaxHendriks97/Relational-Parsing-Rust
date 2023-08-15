@@ -104,7 +104,7 @@ impl Regex {
         }
 
         if !waiting_atomics.is_empty() {
-            unimplemented!("There are still waiting atomics: {:?}, there must be a circular dependency\nFinished atomics: {:?}", waiting_atomics, finished_atomics.keys());
+            unimplemented!("Not all atomic languages could be computed: {:?}\nIndirectly left-recursive grammars are not supported for now.", waiting_atomics);
         }
 
         let mut res: Regex = Regex(HashMap::new());
@@ -264,24 +264,14 @@ impl IntermediateAtomic {
     pub fn try_finish(&mut self, finished_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>, waiting_atomics: &HashMap<(Nonterminal, Terminal), IntermediateAtomic>) -> isize {
         let mut finished = 1;
 
-        let mut new_different_atomic: RegexWordRuleSet = self.different_atomic.clone();
-
         for regex_word_rule in self.different_atomic.iter() {
             let regex_word = regex_word_rule.word();
-            let regex_rules = regex_word_rule.rules();
             let first_symbol = regex_word.first();
 
             match first_symbol {
                 RegexSymbol::AtomicLanguage(nt, t) => {
-                    if let Some(finished_atomic) = finished_atomics.get(&(*nt, *t)) {
-                        //let finished_direct = finished_atomic.direct.clone();
-
-                        //for finished_regex_word_rule in finished_direct.iter() {
-                        //    let new_regex_word = regex_word.not_first().concat(&finished_regex_word_rule.word());
-                        //    let new_regex_rules = regex_rules.clone().concat(&finished_regex_word_rule.rules());
-
-                        //    self.direct.insert(RegexWordRule::new(new_regex_word, new_regex_rules));
-                        //}
+                    if let Some(_) = finished_atomics.get(&(*nt, *t)) {
+                        continue;
                     } else if let Some(_) = waiting_atomics.get(&(*nt, *t)) {
                         finished = 0
                     } else {
@@ -291,8 +281,6 @@ impl IntermediateAtomic {
                 _ => panic!("First symbol should be an atomic language: {:?}", first_symbol),
             }
         }
-
-        self.different_atomic = new_different_atomic;
 
         finished
     }
