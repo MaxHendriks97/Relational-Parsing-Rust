@@ -26,7 +26,7 @@ fn gen_all_grammars() {
 
     for (grammar, name) in grammars {
         println!("Generating {}", name);
-        let streams: TokenStreams = generate_tokens(&grammar, 15, 20);
+        let streams: TokenStreams = generate_tokens(&grammar, 15, 10);
         if let Err(e) = streams.to_file(name) {
             println!("{}", e);
         }

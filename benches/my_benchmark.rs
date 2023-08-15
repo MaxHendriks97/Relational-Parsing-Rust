@@ -141,7 +141,7 @@ fn parse_grammars(c: &mut Criterion) {
 
             let mut group = c.benchmark_group(*stream_file);
             group.sampling_mode(criterion::SamplingMode::Flat);
-            group.measurement_time(Duration::from_secs(20));
+            group.measurement_time(Duration::from_secs(30));
             group.plot_config(plot_config);
 
             for opt_line in reader.lines() {
