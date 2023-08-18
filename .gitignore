@@ -1,6 +1,5 @@
 /target
 *.dot
-*.streams
 *.bigstream
 /.antlr
 *.txt
